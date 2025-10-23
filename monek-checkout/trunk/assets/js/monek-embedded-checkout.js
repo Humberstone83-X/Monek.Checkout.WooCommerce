@@ -8,6 +8,7 @@
         expressContainer: '#mcwc-express-container',
         tokenInput: '#monek_payment_token',
         contextInput: '#monek_checkout_context',
+        sessionInput: '#monek_checkout_session_id',
     };
 
     if (!settings.publishableKey) {
@@ -331,9 +332,41 @@
             throw new Error('The payment processor did not return a token.');
         }
 
+        let context = {};
+
+        if (tokenisationResult && typeof tokenisationResult === 'object') {
+            try {
+                context = JSON.parse(JSON.stringify(tokenisationResult));
+            } catch (jsonError) {
+                if (tokenisationResult.context && typeof tokenisationResult.context === 'object') {
+                    Object.assign(context, tokenisationResult.context);
+                }
+            }
+        }
+
+        const sessionId =
+            (tokenisationResult && typeof tokenisationResult === 'object' && tokenisationResult.sessionId)
+                ? tokenisationResult.sessionId
+                : '';
+
+        if (sessionId && (!context.sessionId || context.sessionId !== sessionId)) {
+            context.sessionId = sessionId;
+        }
+
+        if (
+            tokenisationResult &&
+            typeof tokenisationResult === 'object' &&
+            tokenisationResult.payment &&
+            tokenisationResult.payment.id &&
+            (!context.paymentId || context.paymentId !== tokenisationResult.payment.id)
+        ) {
+            context.paymentId = tokenisationResult.payment.id;
+        }
+
         return {
             token,
-            context: (tokenisationResult && typeof tokenisationResult === 'object') ? tokenisationResult : {},
+            sessionId,
+            context,
         };
     }
 
@@ -350,6 +383,11 @@
             } catch (e) {
                 contextInput.value = '';
             }
+        }
+
+        const sessionInput = document.querySelector(selectors.sessionInput);
+        if (sessionInput) {
+            sessionInput.value = result.sessionId || '';
         }
     }
 

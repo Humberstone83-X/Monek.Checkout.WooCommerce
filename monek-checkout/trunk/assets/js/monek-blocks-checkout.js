@@ -18,16 +18,19 @@
             if (window.mcwcCheckoutController?.ensureMounted) {
                 window.mcwcCheckoutController.ensureMounted();
             }
-        });
+        }, []);
 
-        return h('div', { 'data-mcwc-checkout-block': 'true', className: 'mcwc-checkout-wrapper' }, [
+        return h(
+            'div',
+            { 'data-mcwc-checkout-block': 'true', className: 'mcwc-checkout-wrapper' },
             h('div', { id: 'mcwc-checkout-messages', className: 'mcwc-checkout-messages', role: 'alert', 'aria-live': 'polite' }),
             h('div', { id: 'mcwc-express-container', className: 'mcwc-sdk-surface', 'aria-live': 'polite' }),
             h('div', { id: 'mcwc-checkout-container', className: 'mcwc-sdk-surface', 'aria-live': 'polite' }),
             h('input', { type: 'hidden', name: 'monek_payment_token', id: 'monek_payment_token' }),
             h('input', { type: 'hidden', name: 'monek_checkout_context', id: 'monek_checkout_context' }),
+            h('input', { type: 'hidden', name: 'monek_checkout_session_id', id: 'monek_checkout_session_id' }),
             h('p', { className: 'mcwc-block-description' }, description),
-        ]);
+        );
     }
 
     registry.registerPaymentMethod({

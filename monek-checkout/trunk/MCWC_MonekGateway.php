@@ -308,6 +308,7 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
         echo '</div>';
         echo '<input type="hidden" name="monek_payment_token" id="monek_payment_token" value="" />';
         echo '<input type="hidden" name="monek_checkout_context" id="monek_checkout_context" value="" />';
+        echo '<input type="hidden" name="monek_checkout_session_id" id="monek_checkout_session_id" value="" />';
     }
 
     /**
@@ -432,6 +433,14 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
             }
         }
 
+        $session_id = isset($_POST['monek_checkout_session_id'])
+            ? sanitize_text_field(wp_unslash($_POST['monek_checkout_session_id']))
+            : '';
+
+        if (!empty($session_id) && (!isset($context['sessionId']) || empty($context['sessionId']))) {
+            $context['sessionId'] = $session_id;
+        }
+
         try {
             $merchant_id = $this->mcwc_get_merchant_id($order);
         } catch (Exception $exception) {
@@ -445,6 +454,7 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
             $this->get_option('country_dropdown'),
             $token,
             $this->basket_summary ?: __('Goods', 'monek-checkout'),
+            $session_id,
             $context
         );
 

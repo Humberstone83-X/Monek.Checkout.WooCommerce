@@ -14,6 +14,7 @@ class MCWC_ServerCompletionPayloadBuilder
      * @param string   $country_code ISO numeric country code associated with the merchant account.
      * @param string   $payment_token The token returned by the Checkout SDK.
      * @param string   $description Purchase description to attach to the payment.
+     * @param string   $session_id Session identifier associated with the checkout instance.
      * @param array    $context Additional context returned by the Checkout SDK (optional).
      *
      * @return array
@@ -24,6 +25,7 @@ class MCWC_ServerCompletionPayloadBuilder
         string $country_code,
         string $payment_token,
         string $description,
+        string $session_id,
         array $context = []
     ): array {
         $amount_minor = MCWC_TransactionHelper::mcwc_convert_decimal_to_flat($order->get_total());
@@ -46,6 +48,10 @@ class MCWC_ServerCompletionPayloadBuilder
                 'orderKey' => $order->get_order_key(),
             ],
         ];
+
+        if (!empty($session_id)) {
+            $payload['sessionId'] = $session_id;
+        }
 
         $payload['cardholder'] = $this->build_cardholder($order);
         $shipping = $this->build_shipping($order);
