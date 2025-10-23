@@ -7,7 +7,7 @@ use Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry;
  * Author: Monek Ltd
  * Author URI: http://www.monek.com
  * Description: Take credit/debit card payments with Monek.
- * Version: 3.3.5
+ * Version: 4.0.0
  * text-domain: monek-checkout
  * Requires Plugins: woocommerce
  * License: GPLv3 or later
@@ -17,7 +17,7 @@ use Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry;
  * Requires at least: 5.0
  * Tested up to: 6.8.2
  * Requires PHP: 7.4
- * Stable tag: 3.3.5
+ * Stable tag: 4.0.0
  */
 
  /*
@@ -91,6 +91,8 @@ if (!function_exists('mcwc_initialise_monek_payment_gateway')) {
                 'MCWC_TransactionHelper'             => 'Payment/MCWC_TransactionHelper.php',
                 'MCWC_PreparedPaymentRequestBuilder' => 'Payment/MCWC_PreparedPaymentRequestBuilder.php',
                 'MCWC_PreparedPaymentManager'        => 'Payment/MCWC_PreparedPaymentManager.php',
+                'MCWC_ServerCompletionPayloadBuilder'=> 'Payment/MCWC_ServerCompletionPayloadBuilder.php',
+                'MCWC_ServerCompletionClient'        => 'Payment/MCWC_ServerCompletionClient.php',
                 'MCWC_Address'                       => 'Model/MCWC_Address.php',
                 'MCWC_ConsignmentSettings'           => 'Consignment/Model/MCWC_ConsignmentSettings.php',
                 'MCWC_ProductConsignmentInitializer' => 'Consignment/MCWC_ProductConsignmentInitializer.php',

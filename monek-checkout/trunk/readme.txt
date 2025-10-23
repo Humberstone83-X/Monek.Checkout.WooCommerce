@@ -4,7 +4,7 @@ Tags: Credit Card Payments, Monek, Monek Checkout, Monek Gateway, Monek Payments
 Requires at least: 5.0
 Tested up to: 6.8.2
 Requires PHP: 7.4
-Stable tag: 3.3.5
+Stable tag: 4.0.0
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,13 @@ This is a WooCommerce default behavior and not specific to the Monek Gateway plu
 5. Expanded Mobile View
 
 == Changelog ==
+
+=4.0.0=
+*Release Date - 2025-10-23*
+
+* Added - Embedded Checkout SDK experience with server-side payment completion handled by the plugin.
+* Added - Configuration fields for publishable and secret Checkout SDK keys.
+* Updated - WooCommerce Blocks integration to mount the embedded checkout UI directly on the checkout page.
 
 =3.3.0=
 *Release Date - 2024-10-2024*

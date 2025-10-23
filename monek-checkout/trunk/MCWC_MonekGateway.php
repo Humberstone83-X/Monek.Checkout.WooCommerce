@@ -16,15 +16,22 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
     public const ELITE_URL = 'https://elite.monek.com/Secure/';
     private const GATEWAY_ID = 'monek-checkout';
     public const STAGING_URL = 'https://staging.monek.com/Secure/';
+    private const CHECKOUT_JS_URL_LIVE = 'https://checkout-js.monek.com/monek-checkout.iife.js';
+    private const CHECKOUT_JS_URL_TEST = 'https://dev-checkout-js.monek.com/monek-checkout.iife.js';
+    private const CHECKOUT_API_BASE_LIVE = 'https://checkout-api.monek.com/v1/';
+    private const CHECKOUT_API_BASE_TEST = 'https://dev-checkout-api.monek.com/v1/';
 
     public string $basket_summary;
     public bool $is_consignment_mode_active;
     public string $country_dropdown;
     private bool $is_test_mode_active;
     public string $merchant_id;
-    private MCWC_PreparedPaymentManager $prepared_payment_manager;
     private bool $show_google_pay;
     private bool $disable_basket;
+    private string $publishable_key = '';
+    private string $secret_key = '';
+    private ?MCWC_ServerCompletionClient $server_completion_client = null;
+    private MCWC_ServerCompletionPayloadBuilder $server_payload_builder;
 
     public function __construct()
     {
@@ -34,8 +41,11 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
         $this->mcwc_get_settings();
 
         add_action("woocommerce_update_options_payment_gateways_{$this->id}", [$this, 'process_admin_options']);
+        add_action('wp_enqueue_scripts', [$this, 'mcwc_enqueue_checkout_assets']);
+        add_action('woocommerce_after_checkout_validation', [$this, 'mcwc_require_token_during_validation'], 10, 2);
 
-        $this->prepared_payment_manager = new MCWC_PreparedPaymentManager($this->is_test_mode_active, $this->show_google_pay, $this->disable_basket);
+        $this->server_payload_builder = new MCWC_ServerCompletionPayloadBuilder();
+        $this->mcwc_bootstrap_server_completion_client();
 
         $callback_controller = new MCWC_CallbackController($this->is_test_mode_active);
         $callback_controller->mcwc_register_routes();
@@ -63,17 +73,6 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
             $order_items = $order->get_items();
             return MCWC_ConsignmentCart::mcwc_get_merchant_id_by_product_tags_from_pairs(reset($order_items)->get_product()->get_id())[0];
         }
-    }
-
-    /**
-     * Get the URL for the iPay checkout endpoint 
-     *
-     * @return string
-     */
-    private function mcwc_get_ipay_url(): string
-    {
-        $ipay_extension = 'checkout.aspx';
-        return ($this->is_test_mode_active ? self::STAGING_URL : self::ELITE_URL) . $ipay_extension;
     }
 
     /**
@@ -107,6 +106,68 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
         $this->country_dropdown = $this->get_option('country_dropdown');
         $this->basket_summary = $this->get_option('basket_summary');
         $this->disable_basket = isset($this->settings['basket_disable']) && $this->settings['basket_disable'] == 'yes';
+
+        $this->publishable_key = $this->is_test_mode_active
+            ? trim($this->get_option('test_publishable_key'))
+            : trim($this->get_option('live_publishable_key'));
+
+        $this->secret_key = $this->is_test_mode_active
+            ? trim($this->get_option('test_secret_key'))
+            : trim($this->get_option('live_secret_key'));
+    }
+
+    /**
+     * Initialise the server completion HTTP client if credentials are available.
+     */
+    private function mcwc_bootstrap_server_completion_client(): void
+    {
+        if (empty($this->secret_key)) {
+            $this->server_completion_client = null;
+            return;
+        }
+
+        $api_base = $this->mcwc_get_checkout_api_base_url();
+        $this->server_completion_client = new MCWC_ServerCompletionClient($this->secret_key, $api_base);
+    }
+
+    /**
+     * Determine the Checkout API base URL for the current environment.
+     */
+    private function mcwc_get_checkout_api_base_url(): string
+    {
+        $default = $this->is_test_mode_active ? self::CHECKOUT_API_BASE_TEST : self::CHECKOUT_API_BASE_LIVE;
+
+        /**
+         * Filter the Checkout API base URL used by the plugin.
+         *
+         * @since 4.0.0
+         *
+         * @param string               $default_url Default API base.
+         * @param bool                 $is_test     Whether the gateway operates in test mode.
+         * @param MCWC_MonekGateway    $gateway     Gateway instance.
+         */
+        $filtered = apply_filters('mcwc_checkout_api_base_url', $default, $this->is_test_mode_active, $this);
+
+        return trailingslashit($filtered);
+    }
+
+    /**
+     * Determine the URL of the Checkout SDK for the current environment.
+     */
+    private function mcwc_get_checkout_js_url(): string
+    {
+        $default = $this->is_test_mode_active ? self::CHECKOUT_JS_URL_TEST : self::CHECKOUT_JS_URL_LIVE;
+
+        /**
+         * Filter the Checkout SDK URL used to load the embedded iframe.
+         *
+         * @since 4.0.0
+         *
+         * @param string            $default_url Default SDK URL.
+         * @param bool              $is_test     Whether test mode is active.
+         * @param MCWC_MonekGateway $gateway     Gateway instance.
+         */
+        return (string) apply_filters('mcwc_checkout_js_url', $default, $this->is_test_mode_active, $this);
     }
 
    /**
@@ -181,6 +242,34 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
                 'description' => __('Enable this option to provide access to GooglePay as a payment option. ', 'monek-checkout'),
                 'desc_tip' => true
             ],
+            'test_publishable_key' => [
+                'title' => __('Test publishable key', 'monek-checkout'),
+                'type' => 'text',
+                'description' => __('Public key provided by Monek for use with the Checkout SDK in test mode.', 'monek-checkout'),
+                'default' => '',
+                'desc_tip' => true,
+            ],
+            'test_secret_key' => [
+                'title' => __('Test secret key', 'monek-checkout'),
+                'type' => 'password',
+                'description' => __('Secret key used to authenticate server-completed payments in test mode.', 'monek-checkout'),
+                'default' => '',
+                'desc_tip' => true,
+            ],
+            'live_publishable_key' => [
+                'title' => __('Live publishable key', 'monek-checkout'),
+                'type' => 'text',
+                'description' => __('Public key provided by Monek for the Checkout SDK in live mode.', 'monek-checkout'),
+                'default' => '',
+                'desc_tip' => true,
+            ],
+            'live_secret_key' => [
+                'title' => __('Live secret key', 'monek-checkout'),
+                'type' => 'password',
+                'description' => __('Secret key used to authenticate server-completed payments in live mode.', 'monek-checkout'),
+                'default' => '',
+                'desc_tip' => true,
+            ],
             'country_dropdown' => [
                 'title' => __('Country', 'monek-checkout'),
                 'type' => 'select',
@@ -208,6 +297,106 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
     }
 
     /**
+     * Output the container that hosts the embedded checkout component.
+     */
+    public function payment_fields(): void
+    {
+        echo '<div id="mcwc-checkout-wrapper" class="mcwc-checkout-wrapper">';
+        echo '<div id="mcwc-checkout-messages" class="mcwc-checkout-messages" role="alert" aria-live="polite"></div>';
+        echo '<div id="mcwc-express-container" class="mcwc-sdk-surface" aria-live="polite"></div>';
+        echo '<div id="mcwc-checkout-container" class="mcwc-sdk-surface" aria-live="polite"></div>';
+        echo '</div>';
+        echo '<input type="hidden" name="monek_payment_token" id="monek_payment_token" value="" />';
+        echo '<input type="hidden" name="monek_checkout_context" id="monek_checkout_context" value="" />';
+    }
+
+    /**
+     * Enqueue the assets required to display the embedded checkout UI.
+     */
+    public function mcwc_enqueue_checkout_assets(): void
+    {
+        if ((!is_checkout() && !is_checkout_pay_page()) || $this->enabled !== 'yes') {
+            return;
+        }
+
+        if (empty($this->publishable_key)) {
+            return;
+        }
+
+        $sdk_handle = 'mcwc-checkout-sdk';
+        if (!wp_script_is($sdk_handle, 'registered')) {
+            wp_register_script($sdk_handle, $this->mcwc_get_checkout_js_url(), [], null, true);
+        }
+
+        $script_handle = 'mcwc-embedded-checkout';
+        wp_register_script(
+            $script_handle,
+            plugins_url('assets/js/monek-embedded-checkout.js', __FILE__),
+            ['jquery', $sdk_handle],
+            mcwc_get_monek_plugin_version(),
+            true
+        );
+
+        $initial_amount_minor = 0;
+        if (WC()->cart instanceof WC_Cart) {
+            $totals = WC()->cart->get_totals();
+            $initial_total = isset($totals['total']) ? (float) $totals['total'] : 0.0;
+            $initial_amount_minor = MCWC_TransactionHelper::mcwc_convert_decimal_to_flat($initial_total);
+        }
+
+        $settings = [
+            'publishableKey' => $this->publishable_key,
+            'countryCode' => $this->country_dropdown ?: '826',
+            'currencyNumeric' => MCWC_TransactionHelper::mcwc_get_iso4217_currency_code(),
+            'currencyDecimals' => wc_get_price_decimals(),
+            'basketSummary' => $this->basket_summary ?: __('Goods', 'monek-checkout'),
+            'testMode' => $this->is_test_mode_active,
+            'showExpress' => $this->show_google_pay,
+            'initialAmountMinor' => $initial_amount_minor,
+            'gatewayId' => $this->id,
+            'strings' => [
+                'initialising' => __('Initialising secure card fields…', 'monek-checkout'),
+                'tokenError' => __('We were unable to secure your card details. Please try again.', 'monek-checkout'),
+            ],
+        ];
+
+        wp_localize_script($script_handle, 'mcwcCheckoutSettings', $settings);
+
+        wp_enqueue_script($sdk_handle);
+        wp_enqueue_script($script_handle);
+
+        $style_handle = 'mcwc-embedded-checkout';
+        if (!wp_style_is($style_handle, 'registered')) {
+            wp_register_style(
+                $style_handle,
+                plugins_url('assets/css/monek-embedded-checkout.css', __FILE__),
+                [],
+                mcwc_get_monek_plugin_version()
+            );
+        }
+        wp_enqueue_style($style_handle);
+    }
+
+    /**
+     * Ensure a token has been supplied before WooCommerce processes the order.
+     *
+     * @param array           $data   Checkout data.
+     * @param WP_Error|object $errors Validation errors object.
+     */
+    public function mcwc_require_token_during_validation($data, $errors): void
+    {
+        $selected_method = $data['payment_method'] ?? '';
+        if ($selected_method !== $this->id) {
+            return;
+        }
+
+        $token = isset($_POST['monek_payment_token']) ? sanitize_text_field(wp_unslash($_POST['monek_payment_token'])) : '';
+        if (empty($token)) {
+            $errors->add('monek_checkout_missing_token', __('Please enter your card details before placing the order.', 'monek-checkout'));
+        }
+    }
+
+    /**
      * Process the payment for the Monek payment gateway 
      *
      * @param int $order_id
@@ -216,32 +405,108 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
     public function process_payment($order_id): array
     {
         $order = wc_get_order($order_id);
-        $return_plugin_url = (new WooCommerce)->api_request_url(self::GATEWAY_ID);
-        $this->mcwc_validate_return_url($order, $return_plugin_url);
 
-        $response = $this->prepared_payment_manager->mcwc_create_prepared_payment(
+        if (!$order instanceof WC_Order) {
+            wc_add_notice(__('Unable to load the order for payment.', 'monek-checkout'), 'error');
+            return [];
+        }
+
+        if (null === $this->server_completion_client) {
+            wc_add_notice(__('The Monek gateway is missing API credentials. Please contact the store owner.', 'monek-checkout'), 'error');
+            return [];
+        }
+
+        $token = isset($_POST['monek_payment_token']) ? sanitize_text_field(wp_unslash($_POST['monek_payment_token'])) : '';
+
+        if (empty($token)) {
+            wc_add_notice(__('Please enter your card details before placing the order.', 'monek-checkout'), 'error');
+            return [];
+        }
+
+        $context = [];
+        if (!empty($_POST['monek_checkout_context'])) {
+            $raw_context = wp_unslash($_POST['monek_checkout_context']);
+            $decoded = json_decode($raw_context, true);
+            if (is_array($decoded)) {
+                $context = $decoded;
+            }
+        }
+
+        try {
+            $merchant_id = $this->mcwc_get_merchant_id($order);
+        } catch (Exception $exception) {
+            wc_add_notice($exception->getMessage(), 'error');
+            return [];
+        }
+
+        $payload = $this->server_payload_builder->build(
             $order,
-            $this->mcwc_get_merchant_id($order),
+            $merchant_id,
             $this->get_option('country_dropdown'),
-            $return_plugin_url,
-            $this->get_option('basket_summary'),
-
+            $token,
+            $this->basket_summary ?: __('Goods', 'monek-checkout'),
+            $context
         );
 
-        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) >= 300) {
-            $error_message = is_wp_error($response) ? $response->get_error_message() : wp_remote_retrieve_response_message($response);
-            echo 'Error: ' . esc_html($error_message);
-            return [];
-        } else {
-            $body = wp_remote_retrieve_body($response);
-        }
-        
-        $order->add_order_note(__('Order Created: Redirecting to checkout page', 'monek-checkout'));
+        $response = $this->server_completion_client->complete_payment($payload);
 
-        return [
-            'result' => 'success',
-            'redirect' => $this->mcwc_get_ipay_url() . '?PreparedPayment=' . $body
-        ];
+        if (is_wp_error($response)) {
+            $this->mcwc_handle_payment_error($order, $response->get_error_message());
+            return [];
+        }
+
+        $status_code = (int) wp_remote_retrieve_response_code($response);
+        $body_raw = wp_remote_retrieve_body($response);
+        $body = json_decode($body_raw, true);
+
+        if ($status_code >= 200 && $status_code < 300) {
+            $transaction_id = '';
+            if (is_array($body)) {
+                $transaction_id = $body['payment']['id'] ?? ($body['id'] ?? '');
+            }
+
+            if (!empty($transaction_id)) {
+                $order->set_transaction_id($transaction_id);
+            }
+
+            $order->add_order_note(__('Payment authorised via embedded checkout.', 'monek-checkout'));
+            $order->payment_complete();
+            if (WC()->cart instanceof WC_Cart) {
+                WC()->cart->empty_cart();
+            }
+
+            return [
+                'result' => 'success',
+                'redirect' => $this->get_return_url($order)
+            ];
+        }
+
+        $message = '';
+        if (is_array($body)) {
+            $message = $body['error']['message'] ?? $body['message'] ?? '';
+        }
+
+        if (empty($message)) {
+            $message = wp_remote_retrieve_response_message($response);
+        }
+
+        if (empty($message)) {
+            $message = __('Payment could not be completed. Please try again.', 'monek-checkout');
+        }
+
+        $this->mcwc_handle_payment_error($order, $message);
+
+        return [];
+    }
+
+    /**
+     * Handle a declined or failed payment response.
+     */
+    private function mcwc_handle_payment_error(WC_Order $order, string $message): void
+    {
+        $clean_message = wp_strip_all_tags($message);
+        wc_add_notice($clean_message, 'error');
+        $order->add_order_note(sprintf(__('Payment failed: %s', 'monek-checkout'), $clean_message));
     }
 
     /**
@@ -253,39 +518,9 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
     {
         $this->id = self::GATEWAY_ID;
         $this->icon = plugins_url('img/Monek-Logo100x12.png', __FILE__);
-        $this->has_fields = false;
+        $this->has_fields = true;
         $this->method_title = __('Monek', 'monek-checkout');
         $this->method_description = __('Pay securely with Monek using your credit/debit card.', 'monek-checkout');
     }
 
-    /**
-     * Validate the return URL for the Monek payment gateway 
-     *
-     * @param WC_Order $order
-     * @param string $return_plugin_url
-     * @return void
-     */
-    private function mcwc_validate_return_url(WC_Order $order, string $return_plugin_url): void
-    {
-        $parsed_url = wp_parse_url($return_plugin_url);
-
-        if ($parsed_url === false) {
-            wc_add_notice('Invalid Return URL: Malformed URL', 'error');
-            $order->add_order_note(__('Invalid Return URL: Malformed URL', 'monek-checkout'));
-            exit;
-        }
-
-        if (isset($parsed_url['port'])) {
-            wc_add_notice('Invalid Return URL: Port Detected', 'error');
-            $order->add_order_note(__('Invalid Return URL: Port Detected', 'monek-checkout'));
-            exit;
-        }
-
-        $current_permalink_structure = get_option('permalink_structure');
-        if ($current_permalink_structure === '/index.php/%postname%/' || $current_permalink_structure === '') {
-            wc_add_notice('Invalid Return URL: Permalink setting "Plain" is not supported', 'error');
-            $order->add_order_note(__('Invalid Return URL: Permalink setting "Plain" is not supported', 'monek-checkout'));
-            exit;
-        }
-    }
 }

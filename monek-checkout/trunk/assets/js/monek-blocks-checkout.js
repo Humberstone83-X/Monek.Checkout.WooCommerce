@@ -1,26 +1,42 @@
 (function () {
     const registry = window.wc?.wcBlocksRegistry;
     const getSetting = window.wc?.wcSettings?.getSetting;
-    const h = window.wp?.element?.createElement;
+    const element = window.wp?.element;
 
-    if (!registry || !getSetting || !h) return;
+    if (!registry || !getSetting || !element) {
+        return;
+    }
 
-    const s = getSetting('monek-checkout_data', {});
-    const desc = s.description || 'Pay securely with Monek.';
+    const h = element.createElement;
+    const { useEffect } = element;
 
-    function Content(/* props */) {
-        return h('div', null, desc);
+    const config = getSetting('monek-checkout_data', {});
+    const description = config.description || 'Pay securely with Monek.';
+
+    function Content() {
+        useEffect(() => {
+            if (window.mcwcCheckoutController?.ensureMounted) {
+                window.mcwcCheckoutController.ensureMounted();
+            }
+        });
+
+        return h('div', { 'data-mcwc-checkout-block': 'true', className: 'mcwc-checkout-wrapper' }, [
+            h('div', { id: 'mcwc-checkout-messages', className: 'mcwc-checkout-messages', role: 'alert', 'aria-live': 'polite' }),
+            h('div', { id: 'mcwc-express-container', className: 'mcwc-sdk-surface', 'aria-live': 'polite' }),
+            h('div', { id: 'mcwc-checkout-container', className: 'mcwc-sdk-surface', 'aria-live': 'polite' }),
+            h('input', { type: 'hidden', name: 'monek_payment_token', id: 'monek_payment_token' }),
+            h('input', { type: 'hidden', name: 'monek_checkout_context', id: 'monek_checkout_context' }),
+            h('p', { className: 'mcwc-block-description' }, description),
+        ]);
     }
 
     registry.registerPaymentMethod({
         name: 'monek-checkout',
-        label: s.title || 'Credit/Debit Card',
+        label: config.title || 'Credit/Debit Card',
         ariaLabel: 'Monek',
-
         content: h(Content, {}),
         edit: h(Content, {}),
-
         canMakePayment: () => true,
-        supports: { features: (s.supports && s.supports.features) || ['products'] },
+        supports: { features: (config.supports && config.supports.features) || ['products'] },
     });
 })();
