@@ -156,65 +156,13 @@ class MCWC_MonekGateway extends WC_Payment_Gateway {
         echo '<div id="mcwc-express-container" class="mcwc-sdk-surface" aria-live="polite"></div>';
         echo '<div id="mcwc-checkout-container" class="mcwc-sdk-surface" aria-live="polite"></div>';
         echo '<div id="mcwc-checkout-messages" class="mcwc-checkout-messages" role="alert" aria-live="polite"></div>';
-        echo '<input type="hidden" name="monek_payment_token" id="monek_payment_token" />';
-        echo '<input type="hidden" name="monek_checkout_context" id="monek_checkout_context" />';
-        echo '<input type="hidden" name="monek_checkout_session_id" id="monek_checkout_session_id" />';
         echo '</div>';
     }
 
     public function process_payment($order_id): array {
-        $order = wc_get_order($order_id);
+        wc_add_notice(__('Monek Checkout payment processing is not yet available. Please choose another payment method.', 'monek-checkout'), 'error');
 
-        if (! $order instanceof WC_Order) {
-            wc_add_notice(__('Unable to create the order at this time. Please try again.', 'monek-checkout'), 'error');
-            return ['result' => 'fail'];
-        }
-
-        $token = isset($_POST['monek_payment_token']) ? wc_clean(wp_unslash($_POST['monek_payment_token'])) : '';
-        if (! $token) {
-            wc_add_notice(__('We could not prepare your payment method. Please try again.', 'monek-checkout'), 'error');
-            return ['result' => 'fail'];
-        }
-
-        $session_id = isset($_POST['monek_checkout_session_id']) ? wc_clean(wp_unslash($_POST['monek_checkout_session_id'])) : '';
-        $context     = [];
-
-        if (isset($_POST['monek_checkout_context'])) {
-            $raw = wp_unslash($_POST['monek_checkout_context']);
-            if (is_string($raw) && '' !== $raw) {
-                $decoded = json_decode($raw, true);
-                if (is_array($decoded)) {
-                    $context = $decoded;
-                } else {
-                    $context = ['raw' => $raw];
-                }
-            }
-        }
-
-        $order->update_meta_data('_mcwc_payment_token', $token);
-
-        if ($session_id) {
-            $order->update_meta_data('_mcwc_session_id', $session_id);
-        }
-
-        if (! empty($context)) {
-            $order->update_meta_data('_mcwc_payment_context', $context);
-        }
-
-        $order->add_order_note(__('Monek checkout token captured. Awaiting server-side payment completion.', 'monek-checkout'));
-        $order->update_status('on-hold', __('Awaiting payment confirmation from Monek.', 'monek-checkout'));
-        $order->save();
-
-        if (function_exists('WC') && WC()->cart) {
-            WC()->cart->empty_cart();
-        }
-
-        do_action('mcwc_checkout_token_captured', $order_id, $token, $context, $session_id);
-
-        return [
-            'result'   => 'success',
-            'redirect' => $this->get_return_url($order),
-        ];
+        return ['result' => 'fail'];
     }
 
     protected function get_initial_amount_minor(): int {

@@ -1,9 +1,9 @@
 *** Monek Checkout Changelog ***
 
 2025-10-24 version 5.0.0
-* Changed - Rebuilt the plugin around the embedded checkout iframe with server-side completion hooks.
+* Changed - Rebuilt the plugin to focus on embedding the new checkout iframe and wiring SDK callbacks for future payment handling.
 * Removed - Legacy hosted checkout, callback, consignment, and transaction helper code paths.
-* Added - Lightweight gateway, Blocks integration, and assets to mount the new checkout with express wallets.
+* Added - Lightweight gateway, Blocks integration, and assets to mount the checkout and express surfaces in WooCommerce.
 
 
 2025-10-23 version 4.0.0

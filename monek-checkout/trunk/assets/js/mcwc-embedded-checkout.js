@@ -11,9 +11,6 @@
         messages: '#mcwc-checkout-messages',
         express: '#mcwc-express-container',
         checkout: '#mcwc-checkout-container',
-        token: '#monek_payment_token',
-        context: '#monek_checkout_context',
-        session: '#monek_checkout_session_id',
     };
 
     const state = {
@@ -187,27 +184,6 @@
         return state.sdkPromise;
     }
 
-    function updateHiddenInputs(result) {
-        const tokenInput = document.querySelector(selectors.token);
-        if (tokenInput) {
-            tokenInput.value = result.token || '';
-        }
-
-        const contextInput = document.querySelector(selectors.context);
-        if (contextInput) {
-            try {
-                contextInput.value = JSON.stringify(result.context || {});
-            } catch (err) {
-                contextInput.value = '';
-            }
-        }
-
-        const sessionInput = document.querySelector(selectors.session);
-        if (sessionInput) {
-            sessionInput.value = result.sessionId || '';
-        }
-    }
-
     async function mountComponents() {
         if (state.mountingPromise) {
             return state.mountingPromise;
@@ -251,92 +227,6 @@
         return state.mountingPromise;
     }
 
-    function extractToken(result) {
-        if (!result) {
-            return '';
-        }
-
-        if (typeof result === 'string') {
-            return result;
-        }
-
-        if (result.token) {
-            return result.token;
-        }
-
-        if (result.paymentToken) {
-            return result.paymentToken;
-        }
-
-        if (result.id) {
-            return result.id;
-        }
-
-        if (result.payment && result.payment.token) {
-            return result.payment.token;
-        }
-
-        if (Array.isArray(result) && result.length) {
-            return extractToken(result[0]);
-        }
-
-        return '';
-    }
-
-    async function requestToken() {
-        const mounted = await mountComponents();
-        if (!mounted || !state.checkoutComponent) {
-            throw new Error('The payment form is not ready.');
-        }
-
-        let tokenResult;
-        if (typeof state.checkoutComponent.createPayment === 'function') {
-            tokenResult = await state.checkoutComponent.createPayment();
-        } else if (typeof state.checkoutComponent.tokenise === 'function') {
-            tokenResult = await state.checkoutComponent.tokenise();
-        } else if (typeof state.checkoutComponent.tokenize === 'function') {
-            tokenResult = await state.checkoutComponent.tokenize();
-        } else {
-            throw new Error('This version of the Monek SDK does not support server completion.');
-        }
-
-        const token = extractToken(tokenResult);
-        if (!token) {
-            throw new Error('The payment processor did not return a token.');
-        }
-
-        let context = {};
-        try {
-            context = JSON.parse(JSON.stringify(tokenResult || {}));
-        } catch (err) {
-            context = {};
-        }
-
-        const sessionId =
-            (tokenResult && typeof tokenResult === 'object' && tokenResult.sessionId)
-                ? tokenResult.sessionId
-                : '';
-
-        if (sessionId && (!context.sessionId || context.sessionId !== sessionId)) {
-            context.sessionId = sessionId;
-        }
-
-        updateHiddenInputs({ token, context, sessionId });
-
-        return { token, context, sessionId };
-    }
-
-    async function handleClassicSubmit() {
-        try {
-            clearError();
-            await requestToken();
-            return true;
-        } catch (error) {
-            displayError(error && error.message ? error.message : getString('token_error', 'There was a problem preparing your payment. Please try again.'));
-            return false;
-        }
-    }
-
     function shouldMount() {
         const method = $('input[name="payment_method"]:checked').val();
         return method === gatewayId;
@@ -351,17 +241,8 @@
     $(document.body).on('payment_method_selected updated_checkout', maybeMount);
     $(document).ready(maybeMount);
 
-    $(document.body).on('checkout_place_order_' + gatewayId, function () {
-        const result = handleClassicSubmit();
-        if (result && typeof result.then === 'function') {
-            return result;
-        }
-        return result;
-    });
-
     window.mcwcCheckoutController = {
         ensureMounted: mountComponents,
-        requestPaymentToken: requestToken,
         displayError,
         clearError,
     };
