@@ -11,19 +11,28 @@
     const { useEffect } = element;
 
     const config = getSetting('monek-checkout_data', {});
+    const label = config.title || 'Monek Checkout';
     const description = config.description || 'Pay securely with Monek.';
     const errorMessage = config.errorMessage || 'We were unable to prepare your payment. Please try again.';
 
     function Content(props) {
-        const { eventRegistration, emitResponse } = props || {};
+        const { eventRegistration, emitResponse, isEditor } = props || {};
 
         useEffect(() => {
+            if (isEditor) {
+                return;
+            }
+
             if (window.mcwcCheckoutController?.ensureMounted) {
                 window.mcwcCheckoutController.ensureMounted();
             }
-        }, []);
+        }, [isEditor]);
 
         useEffect(() => {
+            if (isEditor) {
+                return undefined;
+            }
+
             if (!eventRegistration?.onPaymentProcessing || !emitResponse?.responseTypes) {
                 return undefined;
             }
@@ -74,7 +83,7 @@
                     unregister();
                 }
             };
-        }, [eventRegistration, emitResponse]);
+        }, [eventRegistration, emitResponse, isEditor]);
 
         return h(
             'div',
@@ -91,10 +100,10 @@
 
     registry.registerPaymentMethod({
         name: 'monek-checkout',
-        label: config.title || 'Monek Checkout',
-        ariaLabel: 'Monek Checkout',
-        content: (props) => h(Content, props),
-        edit: (props) => h(Content, props),
+        label,
+        ariaLabel: label,
+        content: h(Content, null),
+        edit: h(Content, { isEditor: true }),
         canMakePayment: () => true,
         supports: { features: ['products'] },
     });
