@@ -2,68 +2,99 @@
 
 use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType;
 
-if ( ! defined( 'ABSPATH' ) ) { exit; }
+if (! defined('ABSPATH')) {
+    exit;
+}
 
 final class MCWC_Monek_Blocks extends AbstractPaymentMethodType {
 
-	protected $name = 'monek-checkout';
+    protected $name = 'monek-checkout';
 
-	public function initialize() {
-		$this->settings = get_option( 'woocommerce_' . $this->name . '_settings', [] );
-	}
+    public function initialize() {
+        $this->settings = get_option('woocommerce_' . $this->name . '_settings', []);
+    }
 
-	public function is_active(): bool {
-		$enabled = $this->settings['enabled'] ?? 'no';
-		if ( 'yes' !== $enabled ) return false;
-
-		if ( 'yes' === ( $this->settings['consignment_mode'] ?? 'no' ) ) return true;
-
-		return ! empty( $this->settings['merchant_id'] );
-	}
-
-
-        public function get_payment_method_script_handles(): array {
-                if ( ! wp_script_is( 'mcwc-embedded-checkout', 'registered' ) ) {
-                        wp_register_script(
-                                'mcwc-embedded-checkout',
-                                plugins_url( 'assets/js/monek-embedded-checkout.js', dirname(__FILE__, 2) . '/.' ),
-                                [ 'jquery' ],
-                                mcwc_get_monek_plugin_version(),
-                                true
-                        );
-                }
-
-                if ( ! wp_style_is( 'mcwc-embedded-checkout', 'registered' ) ) {
-                        wp_register_style(
-                                'mcwc-embedded-checkout',
-                                plugins_url( 'assets/css/monek-embedded-checkout.css', dirname(__FILE__, 2) . '/.' ),
-                                [],
-                                mcwc_get_monek_plugin_version()
-                        );
-                }
-
-                wp_register_script(
-                        'mcwc-monek-blocks',
-                        plugins_url( 'assets/js/monek-blocks-checkout.js', dirname(__FILE__, 2) . '/.' ),
-                        [ 'wc-blocks-registry', 'wc-blocks-checkout', 'wp-element', 'wp-i18n', 'mcwc-embedded-checkout' ],
-                        defined('WC_VERSION') ? WC_VERSION : '1.0.0',
-                        true
-                );
-
-                return [ 'mcwc-embedded-checkout', 'mcwc-monek-blocks' ];
+    public function is_active(): bool {
+        if (empty($this->settings)) {
+            return false;
         }
 
-	public function get_payment_method_script_handles_for_admin(): array {
-		return $this->get_payment_method_script_handles();
-	}
+        if (! isset($this->settings['enabled']) || 'yes' !== $this->settings['enabled']) {
+            return false;
+        }
 
-	public function get_payment_method_data(): array {
-        $gateway = \WC()->payment_gateways()->payment_gateways()[ $this->name ] ?? null;
+        if (empty($this->settings['publishable_key'])) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function get_payment_method_script_handles(): array {
+        $sdk_handle = 'monek-checkout-sdk';
+        if (! wp_script_is($sdk_handle, 'registered')) {
+            wp_register_script($sdk_handle, 'https://checkout-js.monek.com/monek-checkout.iife.js', [], null, true);
+        }
+
+        $checkout_handle = 'mcwc-embedded-checkout';
+        if (! wp_script_is($checkout_handle, 'registered')) {
+            $checkout_path = MCWC_PLUGIN_DIR . 'assets/js/mcwc-embedded-checkout.js';
+            $checkout_url  = MCWC_PLUGIN_URL . 'assets/js/mcwc-embedded-checkout.js';
+            $checkout_ver  = file_exists($checkout_path) ? filemtime($checkout_path) : mcwc_get_monek_plugin_version();
+
+            wp_register_script(
+                $checkout_handle,
+                $checkout_url,
+                ['jquery', $sdk_handle],
+                $checkout_ver,
+                true
+            );
+        }
+
+        $style_handle = 'mcwc-embedded-checkout';
+        if (! wp_style_is($style_handle, 'registered')) {
+            $style_path = MCWC_PLUGIN_DIR . 'assets/css/mcwc-checkout.css';
+            $style_url  = MCWC_PLUGIN_URL . 'assets/css/mcwc-checkout.css';
+            $style_ver  = file_exists($style_path) ? filemtime($style_path) : mcwc_get_monek_plugin_version();
+
+            wp_register_style(
+                $style_handle,
+                $style_url,
+                [],
+                $style_ver
+            );
+        }
+
+        if (! wp_script_is('mcwc-blocks-checkout', 'registered')) {
+            $blocks_path = MCWC_PLUGIN_DIR . 'assets/js/mcwc-blocks-checkout.js';
+            $blocks_url  = MCWC_PLUGIN_URL . 'assets/js/mcwc-blocks-checkout.js';
+            $blocks_ver  = file_exists($blocks_path) ? filemtime($blocks_path) : mcwc_get_monek_plugin_version();
+
+            wp_register_script(
+                'mcwc-blocks-checkout',
+                $blocks_url,
+                ['wc-blocks-registry', 'wc-settings', 'wp-element', $checkout_handle],
+                $blocks_ver,
+                true
+            );
+        }
+
+        return [$checkout_handle, 'mcwc-blocks-checkout'];
+    }
+
+    public function get_payment_method_script_handles_for_admin(): array {
+        return $this->get_payment_method_script_handles();
+    }
+
+    public function get_payment_method_data(): array {
+        $gateways = WC() && WC()->payment_gateways() ? WC()->payment_gateways()->payment_gateways() : [];
+        $gateway  = $gateways[$this->name] ?? null;
 
         return [
-            'title'       => $gateway ? $gateway->get_title() : __( 'Credit/Debit Card', 'monek-checkout' ),
-            'description' => $gateway ? $gateway->get_description() : __( 'Pay securely with Monek.', 'monek-checkout' ),
-            'supports'    => [ 'features' => [ 'products' ] ],
+            'title'        => $gateway ? $gateway->get_title() : __('Monek Checkout', 'monek-checkout'),
+            'description'  => $gateway ? $gateway->get_description() : __('Secure payment powered by Monek.', 'monek-checkout'),
+            'supports'     => ['features' => ['products']],
+            'errorMessage' => __('We were unable to prepare your payment. Please try again.', 'monek-checkout'),
         ];
     }
 }

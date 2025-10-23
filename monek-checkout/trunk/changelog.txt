@@ -1,5 +1,11 @@
 *** Monek Checkout Changelog ***
 
+2025-10-24 version 5.0.0
+* Changed - Rebuilt the plugin around the embedded checkout iframe with server-side completion hooks.
+* Removed - Legacy hosted checkout, callback, consignment, and transaction helper code paths.
+* Added - Lightweight gateway, Blocks integration, and assets to mount the new checkout with express wallets.
+
+
 2025-10-23 version 4.0.0
 * Added - Embedded checkout experience powered by the Monek Checkout SDK with server-side completion.
 * Added - Configuration fields for Checkout SDK publishable and secret keys.
