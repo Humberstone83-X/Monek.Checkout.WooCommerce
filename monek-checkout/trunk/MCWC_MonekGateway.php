@@ -32,6 +32,7 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
     private string $secret_key = '';
     private ?MCWC_ServerCompletionClient $server_completion_client = null;
     private MCWC_ServerCompletionPayloadBuilder $server_payload_builder;
+    private array $store_api_payment_data = [];
 
     public function __construct()
     {
@@ -43,6 +44,7 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
         add_action("woocommerce_update_options_payment_gateways_{$this->id}", [$this, 'process_admin_options']);
         add_action('wp_enqueue_scripts', [$this, 'mcwc_enqueue_checkout_assets']);
         add_action('woocommerce_after_checkout_validation', [$this, 'mcwc_require_token_during_validation'], 10, 2);
+        add_filter('woocommerce_store_api_checkout_payment_method_data', [$this, 'mcwc_capture_store_api_payment_data'], 10, 3);
 
         $this->server_payload_builder = new MCWC_ServerCompletionPayloadBuilder();
         $this->mcwc_bootstrap_server_completion_client();
@@ -128,6 +130,56 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
 
         $api_base = $this->mcwc_get_checkout_api_base_url();
         $this->server_completion_client = new MCWC_ServerCompletionClient($this->secret_key, $api_base);
+    }
+
+    /**
+     * Capture Store API payment data for use during validation and processing.
+     *
+     * @param array|mixed            $data           Payment data provided by the Store API request.
+     * @param string                 $payment_method The selected payment method id.
+     * @param \WP_REST_Request|null $request        The incoming REST request, when available.
+     *
+     * @return array|mixed
+     */
+    public function mcwc_capture_store_api_payment_data($data, $payment_method, $request)
+    {
+        if ($payment_method !== $this->id) {
+            return $data;
+        }
+
+        $this->store_api_payment_data = is_array($data) ? $data : [];
+
+        return $data;
+    }
+
+    /**
+     * Retrieve a payment field from either the classic POST globals or Store API payload.
+     */
+    private function mcwc_get_request_payment_field(string $key, string $mode = 'text'): string
+    {
+        $value = null;
+
+        if (isset($_POST[$key])) {
+            $value = $_POST[$key];
+        } elseif (isset($this->store_api_payment_data[$key])) {
+            $value = $this->store_api_payment_data[$key];
+        }
+
+        if (null === $value) {
+            return '';
+        }
+
+        if (is_array($value)) {
+            $value = wp_json_encode($value);
+        }
+
+        $value = wp_unslash((string) $value);
+
+        if ('json' === $mode) {
+            return $value;
+        }
+
+        return sanitize_text_field($value);
     }
 
     /**
@@ -391,7 +443,7 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
             return;
         }
 
-        $token = isset($_POST['monek_payment_token']) ? sanitize_text_field(wp_unslash($_POST['monek_payment_token'])) : '';
+        $token = $this->mcwc_get_request_payment_field('monek_payment_token');
         if (empty($token)) {
             $errors->add('monek_checkout_missing_token', __('Please enter your card details before placing the order.', 'monek-checkout'));
         }
@@ -417,7 +469,7 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
             return [];
         }
 
-        $token = isset($_POST['monek_payment_token']) ? sanitize_text_field(wp_unslash($_POST['monek_payment_token'])) : '';
+        $token = $this->mcwc_get_request_payment_field('monek_payment_token');
 
         if (empty($token)) {
             wc_add_notice(__('Please enter your card details before placing the order.', 'monek-checkout'), 'error');
@@ -425,17 +477,15 @@ class MCWC_MonekGateway extends WC_Payment_Gateway
         }
 
         $context = [];
-        if (!empty($_POST['monek_checkout_context'])) {
-            $raw_context = wp_unslash($_POST['monek_checkout_context']);
+        $raw_context = $this->mcwc_get_request_payment_field('monek_checkout_context', 'json');
+        if (!empty($raw_context)) {
             $decoded = json_decode($raw_context, true);
             if (is_array($decoded)) {
                 $context = $decoded;
             }
         }
 
-        $session_id = isset($_POST['monek_checkout_session_id'])
-            ? sanitize_text_field(wp_unslash($_POST['monek_checkout_session_id']))
-            : '';
+        $session_id = $this->mcwc_get_request_payment_field('monek_checkout_session_id');
 
         if (!empty($session_id) && (!isset($context['sessionId']) || empty($context['sessionId']))) {
             $context['sessionId'] = $session_id;
