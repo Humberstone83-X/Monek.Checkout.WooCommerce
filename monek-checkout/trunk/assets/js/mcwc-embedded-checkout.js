@@ -18,6 +18,7 @@
         checkoutComponent: null,
         expressComponent: null,
         mountingPromise: null,
+        orderClickListenerAttached: false,
     };
 
     function getString(key, fallback) {
@@ -232,18 +233,98 @@
         return method === gatewayId;
     }
 
+    function triggerOrderClick(nativeEvent) {
+        const detail = {
+            gatewayId,
+            timestamp: Date.now(),
+            event: nativeEvent || null,
+        };
+
+        const eventName = config.orderClickEventName || 'monekCheckout:orderClick';
+
+        try {
+            const evt = typeof window.CustomEvent === 'function'
+                ? new CustomEvent(eventName, { detail })
+                : (function () {
+                    const legacy = document.createEvent('CustomEvent');
+                    legacy.initCustomEvent(eventName, true, true, detail);
+                    return legacy;
+                })();
+
+            window.dispatchEvent(evt);
+        } catch (err) {
+            if (window.console && typeof window.console.warn === 'function') {
+                window.console.warn('Unable to dispatch order click event', err);
+            }
+        }
+
+        const triggerTargets = [];
+
+        if (window.MonekCheckoutTriggers) {
+            triggerTargets.push(window.MonekCheckoutTriggers);
+        }
+
+        if (window.MonekCheckout && window.MonekCheckout.triggers) {
+            triggerTargets.push(window.MonekCheckout.triggers);
+        }
+
+        for (const target of triggerTargets) {
+            const handler = typeof target.orderClicked === 'function'
+                ? target.orderClicked
+                : (typeof target.onOrderClicked === 'function' ? target.onOrderClicked : null);
+
+            if (handler) {
+                try {
+                    handler.call(target, detail);
+                } catch (err) {
+                    if (window.console && typeof window.console.warn === 'function') {
+                        window.console.warn('Order click trigger threw an error', err);
+                    }
+                }
+            }
+        }
+    }
+
     function maybeMount() {
         if (shouldMount()) {
             mountComponents();
         }
     }
 
-    $(document.body).on('payment_method_selected updated_checkout', maybeMount);
-    $(document).ready(maybeMount);
+    function orderClickHandler(event) {
+        if (! shouldMount()) {
+            return;
+        }
+
+        triggerOrderClick(event);
+    }
+
+    function ensureOrderClickListener() {
+        if (state.orderClickListenerAttached) {
+            return;
+        }
+
+        state.orderClickListenerAttached = true;
+
+        const selectorsToWatch = '#place_order, button.wc-block-components-checkout-place-order-button, .wc-block-components-checkout-place-order-button__button';
+
+        $(document.body).on('click', selectorsToWatch, orderClickHandler);
+    }
+
+    $(document.body).on('payment_method_selected updated_checkout', () => {
+        maybeMount();
+        ensureOrderClickListener();
+    });
+
+    $(document).ready(() => {
+        maybeMount();
+        ensureOrderClickListener();
+    });
 
     window.mcwcCheckoutController = {
         ensureMounted: mountComponents,
         displayError,
         clearError,
+        triggerOrderClick,
     };
 })(window, document, window.jQuery);
