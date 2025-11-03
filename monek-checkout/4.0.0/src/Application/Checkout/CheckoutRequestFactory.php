@@ -11,7 +11,7 @@ class CheckoutRequestFactory
     {
         $paymentData = $this->sanitisePaymentData($context->payment_data ?? []);
 
-        $gatewayId = isset($context->payment_method) ? (string) $context->payment_method : '';
+        $gatewayId = $this->resolveGatewayIdentifier($context);
         $mode = isset($paymentData['monek_mode']) ? (string) $paymentData['monek_mode'] : '';
         $token = isset($paymentData['monek_token']) ? (string) $paymentData['monek_token'] : '';
         $sessionIdentifier = isset($paymentData['monek_session']) ? (string) $paymentData['monek_session'] : '';
@@ -60,6 +60,28 @@ class CheckoutRequestFactory
         return sanitize_text_field((string) $key);
     }
 
+    private function resolveGatewayIdentifier(PaymentContext $context): string
+    {
+        $candidate = '';
+
+        if (method_exists($context, 'get_payment_method')) {
+            $candidate = $context->get_payment_method();
+        }
+
+        if ($candidate === '' && isset($context->payment_method)) {
+            $candidate = $context->payment_method;
+        }
+
+        if ($candidate === '' && method_exists($context, 'get_data')) {
+            $contextData = $context->get_data();
+            if (is_array($contextData) && isset($contextData['payment_method'])) {
+                $candidate = $contextData['payment_method'];
+            }
+        }
+
+        return $this->cleanTextValue($candidate);
+    }
+
     private function resolveEntryValue($value)
     {
         if (is_array($value) && array_key_exists('value', $value)) {
@@ -79,6 +101,23 @@ class CheckoutRequestFactory
             return wc_clean(wp_unslash($value));
         }
 
-        return $value;
+        if (is_scalar($value)) {
+            return $value;
+        }
+
+        return '';
+    }
+
+    private function cleanTextValue($value): string
+    {
+        if (is_string($value)) {
+            return sanitize_text_field($value);
+        }
+
+        if (is_scalar($value)) {
+            return sanitize_text_field((string) $value);
+        }
+
+        return '';
     }
 }
