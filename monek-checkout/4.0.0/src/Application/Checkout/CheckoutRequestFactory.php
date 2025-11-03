@@ -36,10 +36,49 @@ class CheckoutRequestFactory
 
         $sanitised = [];
         foreach ($rawPaymentData as $key => $value) {
-            $sanitisedKey = sanitize_text_field((string) $key);
-            $sanitised[$sanitisedKey] = is_string($value) ? wc_clean(wp_unslash($value)) : $value;
+            $resolvedKey = $this->resolveEntryKey($key, $value);
+            if ($resolvedKey === '') {
+                continue;
+            }
+
+            $sanitised[$resolvedKey] = $this->resolveEntryValue($value);
         }
 
         return $sanitised;
+    }
+
+    private function resolveEntryKey($key, $value): string
+    {
+        if (is_array($value) && array_key_exists('key', $value)) {
+            return sanitize_text_field((string) $value['key']);
+        }
+
+        if (is_object($value) && isset($value->key)) {
+            return sanitize_text_field((string) $value->key);
+        }
+
+        return sanitize_text_field((string) $key);
+    }
+
+    private function resolveEntryValue($value)
+    {
+        if (is_array($value) && array_key_exists('value', $value)) {
+            return $this->cleanValue($value['value']);
+        }
+
+        if (is_object($value) && isset($value->value)) {
+            return $this->cleanValue($value->value);
+        }
+
+        return $this->cleanValue($value);
+    }
+
+    private function cleanValue($value)
+    {
+        if (is_string($value)) {
+            return wc_clean(wp_unslash($value));
+        }
+
+        return $value;
     }
 }
