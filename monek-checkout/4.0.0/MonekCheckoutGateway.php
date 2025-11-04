@@ -490,10 +490,6 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
 
         return [
             'theme' => 'light',
-            'layout' => [
-                'containerPadding' => ['24px', '24px', '24px', '24px'],
-                'buttonAlign' => 'stretch',
-            ],
             'core' => [
                 'backgroundColor' => $background,
                 'textColor' => $text,
