@@ -30,6 +30,8 @@ class PaymentPayloadBuilder
         $billingLastName = (string) $order->get_billing_last_name();
         $billingName = trim($billingFirstName . ' ' . $billingLastName);
 
+        $billingPhone = $this->normalisePhoneNumber($order->get_billing_phone());
+
         $expiryMonth = substr($expiry, 0, 2);
         $expiryYear = substr($expiry, 3, 2);
 
@@ -50,7 +52,7 @@ class PaymentPayloadBuilder
             'cardHolder' => array_filter([
                 'name' => $billingName,
                 'emailAddress' => $order->get_billing_email(),
-                'phoneNumber' => $order->get_billing_phone(),
+                'phoneNumber' => $billingPhone,
                 'billingStreet1' => $order->get_billing_address_1(),
                 'billingStreet2' => $order->get_billing_address_2(),
                 'billingCity' => $order->get_billing_city(),
@@ -65,5 +67,22 @@ class PaymentPayloadBuilder
             'basketDescription' => sprintf(__('Order %s', 'monek-checkout'), $order->get_order_number()),
             'paymentReference' => $paymentReference,
         ];
+    }
+
+    private function normalisePhoneNumber(?string $phone): ?string
+    {
+        if (empty($phone)) {
+            return $phone;
+        }
+
+        $digits = preg_replace('/\D+/', '', $phone);
+
+        $digits = preg_replace('/^(?:44|0{2}44)/', '', $digits);
+
+        if (!str_starts_with($digits, '0')) {
+            $digits = "0$digits";
+        }
+
+        return $digits;
     }
 }

@@ -85,6 +85,20 @@
       const unsubscribe = onPaymentProcessing(async () => {
         const responseTypes = emitResponse?.responseTypes;
 
+        const expressPaymentPayload = windowObject.__monekExpressPayload;
+        if (expressPaymentPayload?.monek_reference) {
+          try { delete windowObject.__monekExpressPayload; } catch (_) {}
+          return {
+            type: responseTypes.SUCCESS,
+            meta: {
+              paymentMethodData: {
+                monek_reference: expressPaymentPayload.monek_reference,
+                monek_mode: 'express',
+              },
+            },
+          };
+        }
+
         try {
           if (!windowObject.monekCheckout?.trigger) {
             throw new Error('Payment initialisation not ready. Please try again.');

@@ -64,19 +64,8 @@ class CheckoutRequestFactory
     {
         $candidate = '';
 
-        if (method_exists($context, 'get_payment_method')) {
-            $candidate = $context->get_payment_method();
-        }
-
-        if ($candidate === '' && isset($context->payment_method)) {
+        if (!isset($context->payment_method)) {
             $candidate = $context->payment_method;
-        }
-
-        if ($candidate === '' && method_exists($context, 'get_data')) {
-            $contextData = $context->get_data();
-            if (is_array($contextData) && isset($contextData['payment_method'])) {
-                $candidate = $contextData['payment_method'];
-            }
         }
 
         return $this->cleanTextValue($candidate);

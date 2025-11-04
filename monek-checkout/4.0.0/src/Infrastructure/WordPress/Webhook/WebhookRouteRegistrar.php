@@ -40,10 +40,10 @@ class WebhookRouteRegistrar
         if (! $orderId) {
             $this->log('webhook: order not found', ['reference' => $paymentReference], 'warning');
             return new WP_REST_Response([
-                'ok' => false,
+                'ok' => true,
                 'error' => 'order_not_found',
                 'reference' => $paymentReference,
-            ], 404);
+            ], 200);
         }
 
         $order = wc_get_order($orderId);
