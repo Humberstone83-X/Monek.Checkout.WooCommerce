@@ -29,14 +29,6 @@ Key features:
 
 Once configured, the embedded checkout iframe will appear on the WooCommerce checkout page with callbacks in place, ready for you to extend with your own payment submission logic.
 
-== Frequently Asked Questions ==
-
-= Does this build charge cards or change order statuses? =
-No. This release focuses purely on mounting the checkout UI and exposing SDK callbacks. You will need to add your own payment submission and order management logic on top of this foundation.
-
-= Can the express wallet surface be hidden? =
-Yes. Disable **Express checkout** in the gateway settings to hide the express surface if you only want the hosted card fields.
-
 == Changelog ==
 
 =5.0.0=

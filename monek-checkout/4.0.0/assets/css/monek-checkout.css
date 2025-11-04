@@ -17,6 +17,7 @@
 .monek-express-wrapper {
     display: grid;
     gap: 8px;
+    text-align: left;
 }
 
 .monek-checkout-wrapper[data-loading='true'] {
