@@ -31,6 +31,87 @@
     completionResolver: null,
   };
 
+  const HEX_COLOR_REGEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+  function isPlainObject(value) {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function normaliseHexColor(value, fallback) {
+    if (typeof value !== 'string') {
+      return fallback;
+    }
+
+    const trimmed = value.trim();
+    if (HEX_COLOR_REGEX.test(trimmed)) {
+      return trimmed;
+    }
+
+    return fallback;
+  }
+
+  function resolveThemeMode(configurationObject) {
+    const mode = configurationObject?.themeMode || configurationObject?.theme || 'light';
+    if (typeof mode !== 'string') {
+      return 'light';
+    }
+
+    const lower = mode.toLowerCase();
+    if (lower === 'dark' || lower === 'custom') {
+      return lower;
+    }
+
+    return 'light';
+  }
+
+  function resolveExpressDefaults(configurationObject) {
+    const themeMode = resolveThemeMode(configurationObject);
+    if (themeMode === 'custom') {
+      return { borderRadius: 12 };
+    }
+
+    return {};
+  }
+
+  function resolveStylingConfiguration(configurationObject) {
+    if (isPlainObject(configurationObject?.styling)) {
+      return configurationObject.styling;
+    }
+
+    const themeMode = resolveThemeMode(configurationObject);
+    if (themeMode === 'custom' && isPlainObject(configurationObject?.customTheme)) {
+      const customTheme = configurationObject.customTheme;
+      const background = normaliseHexColor(customTheme.backgroundColor, '#ffffff');
+      const text = normaliseHexColor(customTheme.textColor, '#1a1a1a');
+      const inputBackground = normaliseHexColor(customTheme.inputBackgroundColor, '#ffffff');
+      const accent = normaliseHexColor(customTheme.accentColor, '#1460f2');
+
+      return {
+        theme: 'light',
+        core: {
+          backgroundColor: background,
+          textColor: text,
+          borderRadius: 16,
+        },
+        inputs: {
+          inputBackgroundColor: inputBackground,
+          inputTextColor: text,
+          inputBorderColor: accent,
+          inputBorderRadius: 12,
+        },
+        cssVars: {
+          '--monek-input-focus': accent,
+        },
+      };
+    }
+
+    if (themeMode === 'dark') {
+      return { theme: 'dark' };
+    }
+
+    return { theme: 'light' };
+  }
+
   const ISO_ALPHA2_TO_NUMERIC = {
     GB: '826', US: '840', IE: '372', NL: '528', DE: '276', FR: '250', ES: '724', IT: '380', PT: '620',
     BE: '056', SE: '752', NO: '578', DK: '208', FI: '246', IS: '352', AT: '040', CH: '756', PL: '616',
@@ -262,6 +343,8 @@
       getCardholderDetails: buildCardholderDetails,
     };
 
+    const baseStyling = resolveStylingConfiguration(configuration);
+
     const options = {
       callbacks,
       paymentReference,
@@ -300,14 +383,25 @@
         },
       },
       debug: !!configuration.debug,
-      styling: configuration.styling || { theme: configuration.theme || 'light' },
+      styling: baseStyling,
     };
 
     if (isExpress) {
       const style = state.expressStyle || {};
+      const expressDefaults = resolveExpressDefaults(configuration);
+      const expressStyling = { ...expressDefaults };
+
+      if (typeof style.height !== 'undefined') {
+        expressStyling.height = style.height;
+      }
+
+      if (typeof style.borderRadius !== 'undefined') {
+        expressStyling.borderRadius = style.borderRadius;
+      }
+
       options.styling = {
         ...(options.styling || {}),
-        express: { height: style.height, borderRadius: style.borderRadius },
+        express: expressStyling,
       };
       options.surface = 'express';
     }
