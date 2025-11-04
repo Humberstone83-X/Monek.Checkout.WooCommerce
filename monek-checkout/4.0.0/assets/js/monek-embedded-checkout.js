@@ -458,6 +458,64 @@
     }
   }
 
+  function scheduleExpressAutoMount() {
+    if (!expressEnabled) {
+      return;
+    }
+
+    let expressObserver = null;
+
+    const attemptMount = () => {
+      if (state.expressComponent) {
+        return;
+      }
+
+      const container = documentObject.querySelector(selectors.express);
+      if (!container) {
+        return;
+      }
+
+      mountExpress(selectors.express).then((mounted) => {
+        if (mounted && expressObserver) {
+          expressObserver.disconnect();
+          expressObserver = null;
+        }
+      });
+    };
+
+    const maybeSetupObserver = () => {
+      if (expressObserver || !documentObject.body) {
+        return;
+      }
+
+      if (typeof windowObject.MutationObserver !== 'function') {
+        return;
+      }
+
+      expressObserver = new windowObject.MutationObserver(() => {
+        if (!state.expressComponent) {
+          attemptMount();
+        }
+      });
+
+      expressObserver.observe(documentObject.body, { childList: true, subtree: true });
+    };
+
+    if (documentObject.readyState === 'loading') {
+      documentObject.addEventListener(
+        'DOMContentLoaded',
+        () => {
+          attemptMount();
+          maybeSetupObserver();
+        },
+        { once: true },
+      );
+    } else {
+      attemptMount();
+      maybeSetupObserver();
+    }
+  }
+
   async function mountComponents() {
     if (state.mountingPromise) {
       return state.mountingPromise;
@@ -520,4 +578,6 @@
     getClientPaymentRef: getClientPaymentReference,
     waitForCompletionOnce,
   };
+
+  scheduleExpressAutoMount();
 })(window, document, window.jQuery);
