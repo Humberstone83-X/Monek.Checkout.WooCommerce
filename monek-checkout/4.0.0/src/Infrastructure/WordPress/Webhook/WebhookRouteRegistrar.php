@@ -8,6 +8,8 @@ use WP_REST_Server;
 
 class WebhookRouteRegistrar
 {
+    private const SIGNATURE_TOLERANCE_SECONDS = 300;
+
     public function register(): void
     {
         $this->log('rest_api_init fired');
@@ -25,6 +27,17 @@ class WebhookRouteRegistrar
 
     public function handleWebhook(WP_REST_Request $request): WP_REST_Response
     {
+        $signatureReason = null;
+        if (! $this->isSignatureValid($request, $signatureReason)) {
+            $this->log('webhook: signature verification failed', ['reason' => $signatureReason], 'warning');
+
+            return new WP_REST_Response(['ok' => false, 'error' => 'invalid_signature'], 401);
+        }
+
+        if ($signatureReason === 'no_secret') {
+            $this->log('webhook: signature verification skipped (no secret configured)', [], 'debug');
+        }
+
         $body = $request->get_json_params();
         if (! is_array($body)) {
             return new WP_REST_Response(['ok' => false, 'error' => 'invalid_json'], 400);
@@ -122,6 +135,159 @@ class WebhookRouteRegistrar
         }
 
         return (int) $orders[0];
+    }
+
+    private function isSignatureValid(WP_REST_Request $request, ?string &$reason = null): bool
+    {
+        $secret = $this->getSigningSecret();
+        if ($secret === '') {
+            $reason = 'no_secret';
+            return true;
+        }
+
+        $preparedSecret = $this->prepareSigningSecret($secret);
+        if ($preparedSecret === '') {
+            $reason = 'secret_invalid';
+            return false;
+        }
+
+        $svixId = $this->getHeaderValue($request, 'svix-id');
+        $svixTimestamp = $this->getHeaderValue($request, 'svix-timestamp');
+        $svixSignature = $this->getHeaderValue($request, 'svix-signature');
+
+        if ($svixId === '' || $svixTimestamp === '' || $svixSignature === '') {
+            $reason = 'missing_headers';
+            return false;
+        }
+
+        if (! $this->isTimestampFresh($svixTimestamp)) {
+            $reason = 'timestamp_out_of_range';
+            return false;
+        }
+
+        $payload = (string) $request->get_body();
+        $payloadToSign = $svixId . '.' . $svixTimestamp . '.' . $payload;
+        $expectedSignature = base64_encode(hash_hmac('sha256', $payloadToSign, $preparedSecret, true));
+
+        $signatures = $this->extractSignatures($svixSignature);
+        if (isset($signatures['v1'])) {
+            foreach ($signatures['v1'] as $candidate) {
+                if (hash_equals($expectedSignature, $candidate)) {
+                    $reason = 'verified';
+                    return true;
+                }
+            }
+        }
+
+        $reason = 'signature_mismatch';
+
+        return false;
+    }
+
+    private function getSigningSecret(): string
+    {
+        if (! function_exists('get_option')) {
+            return '';
+        }
+
+        $settings = get_option('woocommerce_monek-checkout_settings', []);
+        if (! is_array($settings)) {
+            return '';
+        }
+
+        if (! isset($settings['svix_signing_secret'])) {
+            return '';
+        }
+
+        return trim((string) $settings['svix_signing_secret']);
+    }
+
+    private function prepareSigningSecret(string $secret): string
+    {
+        $trimmed = trim($secret);
+        if ($trimmed === '') {
+            return '';
+        }
+
+        if (strpos($trimmed, 'whsec_') === 0) {
+            $trimmed = substr($trimmed, 6) ?: '';
+        }
+
+        if ($trimmed === '') {
+            return '';
+        }
+
+        $decoded = base64_decode($trimmed, true);
+        if ($decoded === false) {
+            return $trimmed;
+        }
+
+        if ($decoded === '') {
+            return '';
+        }
+
+        return $decoded;
+    }
+
+    private function getHeaderValue(WP_REST_Request $request, string $headerName): string
+    {
+        $value = $request->get_header($headerName);
+
+        if (is_array($value)) {
+            $value = reset($value);
+        }
+
+        return is_string($value) ? trim($value) : '';
+    }
+
+    private function isTimestampFresh(string $timestamp): bool
+    {
+        if (! ctype_digit($timestamp)) {
+            return false;
+        }
+
+        $timestampInt = (int) $timestamp;
+        if ($timestampInt <= 0) {
+            return false;
+        }
+
+        return abs(time() - $timestampInt) <= self::SIGNATURE_TOLERANCE_SECONDS;
+    }
+
+    private function extractSignatures(string $header): array
+    {
+        $signatures = [];
+        if ($header === '') {
+            return $signatures;
+        }
+
+        $fragments = explode(',', $header);
+        foreach ($fragments as $fragment) {
+            $fragment = trim($fragment);
+            if ($fragment === '') {
+                continue;
+            }
+
+            $parts = explode('=', $fragment, 2);
+            if (count($parts) !== 2) {
+                continue;
+            }
+
+            $version = trim($parts[0]);
+            $signature = trim($parts[1]);
+
+            if ($version === '' || $signature === '') {
+                continue;
+            }
+
+            if (! isset($signatures[$version])) {
+                $signatures[$version] = [];
+            }
+
+            $signatures[$version][] = $signature;
+        }
+
+        return $signatures;
     }
 
     private function log(string $message, array $context = [], string $level = 'info'): void
