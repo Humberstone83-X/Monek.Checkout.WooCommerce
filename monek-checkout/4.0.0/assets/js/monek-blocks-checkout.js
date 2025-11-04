@@ -17,6 +17,7 @@
   const supportedFeatures = resolveSupportedFeatures(settings);
   const paymentMethodLabel = settings.title || 'Monek Checkout';
   const paymentMethodDescription = settings.description || 'Pay securely with Monek.';
+  const paymentMethodLogo = settings.logoUrl || '';
 
   function resolveSupportedFeatures(configuration) {
     if (Array.isArray(configuration.supports)) {
@@ -141,6 +142,14 @@
     return createElement(
       'div',
       { className: 'monek-checkout-wrapper', 'data-monek-block': 'true' },
+      paymentMethodLogo
+        ? createElement('img', {
+            src: paymentMethodLogo,
+            alt: `${paymentMethodLabel} logo`,
+            className: 'monek-checkout-logo',
+            loading: 'lazy',
+          })
+        : null,
       createElement('div', { id: 'monek-checkout-container', className: 'monek-sdk-surface', 'aria-live': 'polite' }),
       createElement('div', { id: 'monek-checkout-messages', className: 'monek-checkout-messages', role: 'alert', 'aria-live': 'polite' }),
       paymentMethodDescription ? createElement('p', { className: 'monek-checkout-description' }, paymentMethodDescription) : null,
@@ -231,6 +240,14 @@
     return createElement(
       'div',
       { className: 'monek-express-wrapper', 'data-monek-block': 'true' },
+      paymentMethodLogo
+        ? createElement('img', {
+            src: paymentMethodLogo,
+            alt: `${paymentMethodLabel} logo`,
+            className: 'monek-checkout-logo',
+            loading: 'lazy',
+          })
+        : null,
       createElement('div', { id: 'monek-express-container', className: 'monek-sdk-surface', 'aria-live': 'polite' })
     );
   }
