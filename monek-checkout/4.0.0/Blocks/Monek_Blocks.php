@@ -100,6 +100,9 @@ final class MonekBlocksIntegration extends AbstractPaymentMethodType
         $publishable = $gateway ? $gateway->get_option('publishable_key') : '';
         $showExpress = $gateway ? ($gateway->get_option('show_express', 'yes') === 'yes') : true;
         $debug = $gateway ? ($gateway->get_option('debug', 'no') === 'yes') : false;
+        $stylingConfiguration = $gateway && method_exists($gateway, 'getStylingConfiguration')
+            ? $gateway->getStylingConfiguration()
+            : $this->get_default_styling_configuration();
 
         return [
             'title' => $gateway ? $gateway->get_title() : __('Monek Checkout', 'monek-checkout'),
@@ -120,6 +123,18 @@ final class MonekBlocksIntegration extends AbstractPaymentMethodType
             'strings' => [
                 'token_error' => __('There was a problem preparing your payment. Please try again.', 'monek-checkout'),
             ],
+            'themeMode' => $stylingConfiguration['themeMode'],
+            'theme' => $stylingConfiguration['theme'],
+            'styling' => $stylingConfiguration['styling'] ?? null,
+            'customTheme' => $stylingConfiguration['customTheme'] ?? null,
+        ];
+    }
+
+    private function get_default_styling_configuration(): array
+    {
+        return [
+            'themeMode' => 'light',
+            'theme' => 'light',
         ];
     }
 }

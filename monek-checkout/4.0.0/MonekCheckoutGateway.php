@@ -13,6 +13,7 @@ use Monek\Checkout\Application\Checkout\StandardCheckoutHandler;
 use Monek\Checkout\Application\Checkout\StoreContext;
 use Monek\Checkout\Infrastructure\Logging\Logger;
 use WC_Order;
+use function sanitize_hex_color;
 
 if (! defined('ABSPATH')) {
     exit;
@@ -20,6 +21,11 @@ if (! defined('ABSPATH')) {
 
 class MonekCheckoutGateway extends \WC_Payment_Gateway
 {
+    private const DEFAULT_CUSTOM_BACKGROUND = '#ffffff';
+    private const DEFAULT_CUSTOM_TEXT = '#1a1a1a';
+    private const DEFAULT_CUSTOM_INPUT_BACKGROUND = '#ffffff';
+    private const DEFAULT_CUSTOM_ACCENT = '#1460f2';
+
     private Logger $logger;
     private CheckoutRequestFactory $checkoutRequestFactory;
     private ExpressCheckoutHandler $expressCheckoutHandler;
@@ -102,7 +108,7 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
                 'desc_tip' => true,
             ],
             'svix_signing_secret' => [
-                'title' => __('Svix signing secret', 'monek-checkout'),
+                'title' => __('Webhook signing secret', 'monek-checkout'),
                 'type' => 'text',
                 'description' => __('Paste the signing secret for your svix endpoint.', 'monek-checkout'),
                 'default' => '',
@@ -119,6 +125,51 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
                 'type' => 'checkbox',
                 'label' => __('Enable verbose logging in the browser console.', 'monek-checkout'),
                 'default' => 'no',
+            ],
+            'theme_mode' => [
+                'title' => __('Checkout theme', 'monek-checkout'),
+                'type' => 'select',
+                'default' => 'light',
+                'description' => __('Choose between the light, dark or a custom checkout theme.', 'monek-checkout'),
+                'desc_tip' => true,
+                'options' => [
+                    'light' => __('Light', 'monek-checkout'),
+                    'dark' => __('Dark', 'monek-checkout'),
+                    'custom' => __('Custom', 'monek-checkout'),
+                ],
+            ],
+            'custom_theme_heading' => [
+                'title' => __('Custom theme settings', 'monek-checkout'),
+                'type' => 'title',
+                'description' => __('Configure colours used when the custom theme is selected.', 'monek-checkout'),
+            ],
+            'custom_background_color' => [
+                'title' => __('Background colour', 'monek-checkout'),
+                'type' => 'text',
+                'default' => self::DEFAULT_CUSTOM_BACKGROUND,
+                'description' => __('Hex colour used for the checkout surface background.', 'monek-checkout'),
+                'desc_tip' => true,
+            ],
+            'custom_text_color' => [
+                'title' => __('Text colour', 'monek-checkout'),
+                'type' => 'text',
+                'default' => self::DEFAULT_CUSTOM_TEXT,
+                'description' => __('Hex colour applied to text inside the checkout.', 'monek-checkout'),
+                'desc_tip' => true,
+            ],
+            'custom_input_background_color' => [
+                'title' => __('Input background colour', 'monek-checkout'),
+                'type' => 'text',
+                'default' => self::DEFAULT_CUSTOM_INPUT_BACKGROUND,
+                'description' => __('Hex colour applied to card input backgrounds.', 'monek-checkout'),
+                'desc_tip' => true,
+            ],
+            'custom_accent_color' => [
+                'title' => __('Accent colour', 'monek-checkout'),
+                'type' => 'text',
+                'default' => self::DEFAULT_CUSTOM_ACCENT,
+                'description' => __('Used for focus rings and interactive accents when the custom theme is active.', 'monek-checkout'),
+                'desc_tip' => true,
             ],
         ];
     }
@@ -170,7 +221,11 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
         }
 
         echo '<div id="monek-checkout-wrapper" class="monek-checkout-wrapper" data-loading="true">';
-        echo '<div id="monek-express-container" class="monek-sdk-surface" aria-live="polite"></div>';
+
+        if ('yes' === $this->show_express) {
+            echo '<div id="monek-express-container" class="monek-sdk-surface" aria-live="polite"></div>';
+        }
+
         echo '<div id="monek-checkout-container" class="monek-sdk-surface" aria-live="polite"></div>';
         echo '<div id="monek-checkout-messages" class="monek-checkout-messages" role="alert" aria-live="polite"></div>';
         echo '</div>';
@@ -316,6 +371,18 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
             ],
         ];
 
+        $stylingConfiguration = $this->getStylingConfiguration();
+        $settings['themeMode'] = $stylingConfiguration['themeMode'];
+        $settings['theme'] = $stylingConfiguration['theme'];
+
+        if (! empty($stylingConfiguration['styling'])) {
+            $settings['styling'] = $stylingConfiguration['styling'];
+        }
+
+        if (! empty($stylingConfiguration['customTheme'])) {
+            $settings['customTheme'] = $stylingConfiguration['customTheme'];
+        }
+
         wp_localize_script($scriptHandle, 'monekCheckoutConfig', $settings);
     }
 
@@ -363,5 +430,127 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
         }
 
         return null;
+    }
+
+    public function getStylingConfiguration(): array
+    {
+        $themeMode = $this->get_theme_mode();
+        $theme = 'custom' === $themeMode ? 'light' : $themeMode;
+
+        $configuration = [
+            'themeMode' => $themeMode,
+            'theme' => $theme,
+        ];
+
+        if ('custom' === $themeMode) {
+            $configuration['customTheme'] = $this->get_custom_theme_colors();
+
+            $styling = $this->build_custom_styling($configuration['customTheme']);
+            if (! empty($styling)) {
+                $configuration['styling'] = $styling;
+            }
+        }
+
+        return $configuration;
+    }
+
+    public function get_theme_mode(): string
+    {
+        $mode = $this->get_option('theme_mode', 'light');
+
+        if (! in_array($mode, ['light', 'dark', 'custom'], true)) {
+            return 'light';
+        }
+
+        return $mode;
+    }
+
+    public function validate_custom_background_color_field($key, $value): string
+    {
+        return $this->validate_color_field($key, $value, self::DEFAULT_CUSTOM_BACKGROUND);
+    }
+
+    public function validate_custom_text_color_field($key, $value): string
+    {
+        return $this->validate_color_field($key, $value, self::DEFAULT_CUSTOM_TEXT);
+    }
+
+    public function validate_custom_input_background_color_field($key, $value): string
+    {
+        return $this->validate_color_field($key, $value, self::DEFAULT_CUSTOM_INPUT_BACKGROUND);
+    }
+
+    public function validate_custom_accent_color_field($key, $value): string
+    {
+        return $this->validate_color_field($key, $value, self::DEFAULT_CUSTOM_ACCENT);
+    }
+
+    private function build_custom_styling(array $customTheme): array
+    {
+        $background = $customTheme['backgroundColor'];
+        $text = $customTheme['textColor'];
+        $inputBackground = $customTheme['inputBackgroundColor'];
+        $accent = $customTheme['accentColor'];
+
+        return [
+            'theme' => 'light',
+            'core' => [
+                'backgroundColor' => $background,
+                'textColor' => $text,
+                'borderRadius' => 16,
+            ],
+            'inputs' => [
+                'inputBackgroundColor' => $inputBackground,
+                'inputTextColor' => $text,
+                'inputBorderColor' => $accent,
+                'inputBorderRadius' => 12,
+            ],
+            'cssVars' => [
+                '--monek-input-focus' => $accent,
+            ],
+        ];
+    }
+
+    private function get_custom_theme_colors(): array
+    {
+        return [
+            'backgroundColor' => $this->get_color_option('custom_background_color', self::DEFAULT_CUSTOM_BACKGROUND),
+            'textColor' => $this->get_color_option('custom_text_color', self::DEFAULT_CUSTOM_TEXT),
+            'inputBackgroundColor' => $this->get_color_option('custom_input_background_color', self::DEFAULT_CUSTOM_INPUT_BACKGROUND),
+            'accentColor' => $this->get_color_option('custom_accent_color', self::DEFAULT_CUSTOM_ACCENT),
+        ];
+    }
+
+    private function get_color_option(string $option, string $default): string
+    {
+        $value = (string) $this->get_option($option, $default);
+        $sanitized = sanitize_hex_color($value);
+
+        return $sanitized ?: $default;
+    }
+
+    private function validate_color_field(string $key, string $value, string $default): string
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return $default;
+        }
+
+        $sanitized = sanitize_hex_color($value);
+
+        if ($sanitized) {
+            return $sanitized;
+        }
+
+        $fieldTitle = $this->form_fields[$key]['title'] ?? $key;
+        $this->add_error(sprintf(__('The colour provided for "%s" is not a valid hex colour.', 'monek-checkout'), $fieldTitle));
+
+        $stored = $this->get_option($key);
+        if (! empty($stored) && sanitize_hex_color($stored)) {
+            return $stored;
+        }
+
+        return $default;
     }
 }
