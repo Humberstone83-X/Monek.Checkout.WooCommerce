@@ -261,27 +261,21 @@ class WebhookRouteRegistrar
             return $signatures;
         }
 
-        $fragments = explode(',', $header);
-        foreach ($fragments as $fragment) {
-            $fragment = trim($fragment);
-            if ($fragment === '') {
+        foreach (preg_split('/\s+/', trim($header)) as $entry) {
+            if ($entry === '') {
                 continue;
             }
 
-            $parts = explode('=', $fragment, 2);
+            $parts = explode(',', $entry, 2);
             if (count($parts) !== 2) {
                 continue;
             }
 
-            $version = trim($parts[0]);
+            $version   = trim($parts[0]); 
             $signature = trim($parts[1]);
 
             if ($version === '' || $signature === '') {
                 continue;
-            }
-
-            if (! isset($signatures[$version])) {
-                $signatures[$version] = [];
             }
 
             $signatures[$version][] = $signature;
