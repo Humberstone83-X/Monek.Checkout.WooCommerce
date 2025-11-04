@@ -7,6 +7,19 @@
     gap: 12px;
 }
 
+.monek-checkout-logo {
+    max-width: 140px;
+    height: auto;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.monek-express-wrapper {
+    display: grid;
+    gap: 8px;
+    text-align: left;
+}
+
 .monek-checkout-wrapper[data-loading='true'] {
     opacity: 0.65;
     pointer-events: none;

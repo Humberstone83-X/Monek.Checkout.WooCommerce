@@ -18,6 +18,7 @@
   const shouldShowExpress = normalizeBoolean(settings.showExpress, true);
   const paymentMethodLabel = settings.title || 'Monek Checkout';
   const paymentMethodDescription = settings.description || 'Pay securely with Monek.';
+  const paymentMethodLogo = settings.logoUrl || '';
 
   function normalizeBoolean(value, defaultValue) {
     if (value === undefined || value === null) {
@@ -172,7 +173,15 @@
       { className: 'monek-checkout-wrapper', 'data-monek-block': 'true' },
       createElement('div', { id: 'monek-checkout-container', className: 'monek-sdk-surface', 'aria-live': 'polite' }),
       createElement('div', { id: 'monek-checkout-messages', className: 'monek-checkout-messages', role: 'alert', 'aria-live': 'polite' }),
-      paymentMethodDescription ? createElement('p', { className: 'monek-checkout-description' }, paymentMethodDescription) : null,
+      paymentMethodLogo
+        ? createElement('img', {
+            src: paymentMethodLogo,
+            alt: `${paymentMethodLabel} logo`,
+            className: 'monek-checkout-logo',
+            loading: 'lazy',
+          })
+        : null,
+      paymentMethodDescription ? createElement('span', { className: 'monek-checkout-description' }, paymentMethodDescription) : null,
     );
   }
 
@@ -260,7 +269,17 @@
     return createElement(
       'div',
       { className: 'monek-express-wrapper', 'data-monek-block': 'true' },
-      createElement('div', { id: 'monek-express-container', className: 'monek-sdk-surface', 'aria-live': 'polite' })
+      createElement('div', { id: 'monek-express-container', className: 'monek-sdk-surface', 'aria-live': 'polite' }),
+      createElement('div', { id: 'monek-express-messages', className: 'monek-checkout-messages', role: 'alert', 'aria-live': 'polite' }),
+      paymentMethodLogo
+        ? createElement('img', {
+            src: paymentMethodLogo,
+            alt: `${paymentMethodLabel} logo`,
+            className: 'monek-checkout-logo',
+            loading: 'lazy',
+          })
+        : null,
+      paymentMethodDescription ? createElement('span', { className: 'monek-checkout-description' }, paymentMethodDescription) : null,
     );
   }
 
