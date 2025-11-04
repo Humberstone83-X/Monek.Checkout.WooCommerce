@@ -108,7 +108,7 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
                 'desc_tip' => true,
             ],
             'svix_signing_secret' => [
-                'title' => __('Svix signing secret', 'monek-checkout'),
+                'title' => __('Webhook signing secret', 'monek-checkout'),
                 'type' => 'text',
                 'description' => __('Paste the signing secret for your svix endpoint.', 'monek-checkout'),
                 'default' => '',
@@ -221,7 +221,11 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
         }
 
         echo '<div id="monek-checkout-wrapper" class="monek-checkout-wrapper" data-loading="true">';
-        echo '<div id="monek-express-container" class="monek-sdk-surface" aria-live="polite"></div>';
+
+        if ('yes' === $this->show_express) {
+            echo '<div id="monek-express-container" class="monek-sdk-surface" aria-live="polite"></div>';
+        }
+
         echo '<div id="monek-checkout-container" class="monek-sdk-surface" aria-live="polite"></div>';
         echo '<div id="monek-checkout-messages" class="monek-checkout-messages" role="alert" aria-live="polite"></div>';
         echo '</div>';

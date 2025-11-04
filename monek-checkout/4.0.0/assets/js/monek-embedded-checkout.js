@@ -11,6 +11,8 @@
     return;
   }
 
+  const expressEnabled = normalizeBoolean(configuration.showExpress, true);
+
   const selectors = {
     wrapper: '#monek-checkout-wrapper',
     messages: '#monek-checkout-messages',
@@ -139,6 +141,34 @@
       state.completionResolver(detail);
       state.completionResolver = null;
     }
+  }
+
+  function normalizeBoolean(value, defaultValue) {
+    if (value === undefined || value === null) {
+      return defaultValue;
+    }
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'number') {
+      return value !== 0;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+
+      if (normalized === 'true' || normalized === 'yes' || normalized === '1') {
+        return true;
+      }
+
+      if (normalized === 'false' || normalized === 'no' || normalized === '0') {
+        return false;
+      }
+    }
+
+    return defaultValue;
   }
 
   function setExpressStyle(style) {
@@ -384,6 +414,13 @@
   }
 
   async function mountExpress(selector) {
+    if (!expressEnabled) {
+      if (windowObject.console?.log) {
+        windowObject.console.log('[monek] express disabled; skipping mount');
+      }
+      return false;
+    }
+
     if (windowObject.console?.log) {
       windowObject.console.log('[monek] mountExpress →', selector);
     }
