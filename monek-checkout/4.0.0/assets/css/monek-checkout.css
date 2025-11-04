@@ -1,4 +1,4 @@
-.mcwc-checkout-wrapper {
+.monek-checkout-wrapper {
     border: 1px solid #dcdcde;
     border-radius: 6px;
     padding: 16px;
@@ -7,35 +7,35 @@
     gap: 12px;
 }
 
-.mcwc-checkout-wrapper[data-loading='true'] {
+.monek-checkout-wrapper[data-loading='true'] {
     opacity: 0.65;
     pointer-events: none;
 }
 
-.mcwc-checkout-messages {
+.monek-checkout-messages {
     color: #d63638;
     font-weight: 600;
     margin: 0;
     min-height: 1em;
 }
 
-.mcwc-checkout-description {
+.monek-checkout-description {
     margin: 0;
     color: #50575e;
     font-size: 0.9rem;
 }
 
-.mcwc-sdk-surface {
+.monek-sdk-surface {
     min-height: 52px;
     background: #f6f7f7;
     border-radius: 4px;
     padding: 12px;
 }
 
-.mcwc-checkout-wrapper .mcwc-sdk-surface + .mcwc-sdk-surface {
+.monek-checkout-wrapper .monek-sdk-surface + .monek-sdk-surface {
     margin-top: 4px;
 }
 
-.mcwc-checkout-wrapper input[type='hidden'] {
+.monek-checkout-wrapper input[type='hidden'] {
     display: none;
 }
