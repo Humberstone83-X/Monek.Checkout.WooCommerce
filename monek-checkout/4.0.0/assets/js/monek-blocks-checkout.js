@@ -15,8 +15,37 @@
 
   const settings = getSetting('monek-checkout_data', {}) || {};
   const supportedFeatures = resolveSupportedFeatures(settings);
+  const shouldShowExpress = normalizeBoolean(settings.showExpress, true);
   const paymentMethodLabel = settings.title || 'Monek Checkout';
   const paymentMethodDescription = settings.description || 'Pay securely with Monek.';
+
+  function normalizeBoolean(value, defaultValue) {
+    if (value === undefined || value === null) {
+      return defaultValue;
+    }
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'number') {
+      return value !== 0;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+
+      if (normalized === 'true' || normalized === 'yes' || normalized === '1') {
+        return true;
+      }
+
+      if (normalized === 'false' || normalized === 'no' || normalized === '0') {
+        return false;
+      }
+    }
+
+    return defaultValue;
+  }
 
   function resolveSupportedFeatures(configuration) {
     if (Array.isArray(configuration.supports)) {
@@ -294,13 +323,17 @@
     supports: { features: supportedFeatures },
   });
 
-  registerExpressPaymentMethod({
-    name: 'monek-checkout-express',
-    paymentMethodId: 'monek-checkout-express',
-    label: 'Monek Express',
-    content: createElement(createExpressContentElement, null),
-    edit: createElement(createExpressContentElement, { isEditor: true }),
-    canMakePayment: () => true,
-    supports: { features: ['products'], style: ['height', 'borderRadius'] },
-  });
+  if (shouldShowExpress) {
+    registerExpressPaymentMethod({
+      name: 'monek-checkout-express',
+      paymentMethodId: 'monek-checkout-express',
+      label: 'Monek Express',
+      content: createElement(createExpressContentElement, null),
+      edit: createElement(createExpressContentElement, { isEditor: true }),
+      canMakePayment: () => true,
+      supports: { features: ['products'], style: ['height', 'borderRadius'] },
+    });
+  } else if (windowObject.console?.log) {
+    windowObject.console.log('[monek] express checkout disabled via settings');
+  }
 })();
