@@ -17,6 +17,7 @@ The plugin mounts Monek’s hosted payment fields and optional express wallets d
 Key features:
 * Secure embedded payment fields rendered inside WooCommerce Checkout Blocks.
 * Optional Apple Pay and other express wallets when configured in Odin.
+* Optional analytics bridging that forwards express checkout events to WooCommerce Tracks, Google Tag Manager (dataLayer), or gtag.js.
 * Payment Confirmed order status triggered by verified webhooks for added assurance.
 * Simple configuration steps designed for non-technical store owners.
 

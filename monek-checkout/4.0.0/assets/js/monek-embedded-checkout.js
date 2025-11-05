@@ -12,6 +12,15 @@
   }
 
   const expressEnabled = normalizeBoolean(configuration.showExpress, true);
+  const analyticsConfig = configuration.analytics || {};
+  const analyticsOptions = {
+    tracksEnabled: normalizeBoolean(analyticsConfig?.tracks?.enabled, false),
+    dataLayerEnabled: normalizeBoolean(analyticsConfig?.dataLayer?.enabled, false),
+    dataLayerEventBase: normaliseString(analyticsConfig?.dataLayer?.event, 'monek_express'),
+    gtagEnabled: normalizeBoolean(analyticsConfig?.gtag?.enabled, false),
+    gtagEventBase: normaliseString(analyticsConfig?.gtag?.event, 'monek_express'),
+    gtagCategory: normaliseString(analyticsConfig?.gtag?.category, 'checkout'),
+  };
 
   const selectors = {
     wrapper: '#monek-checkout-wrapper',
@@ -48,6 +57,15 @@
     }
 
     return fallback;
+  }
+
+  function normaliseString(value, fallback) {
+    if (typeof value !== 'string') {
+      return fallback;
+    }
+
+    const trimmed = value.trim();
+    return trimmed ? trimmed : fallback;
   }
 
   function resolveThemeMode(configurationObject) {
@@ -130,6 +148,8 @@
         windowObject.console.warn('[monek] Failed to emit event', name, error);
       }
     }
+
+    forwardAnalyticsEvent(name, detail);
   }
 
   function resolveCompletion(detail) {
@@ -201,6 +221,144 @@
 
   function getClientPaymentReference() {
     return ensureClientPaymentReference();
+  }
+
+  function deriveExpressEventSuffix(name, detail) {
+    if (typeof detail?.status === 'string' && detail.status) {
+      return detail.status;
+    }
+
+    if (name && typeof name === 'string') {
+      const suffix = name.split(':').pop();
+      if (suffix) {
+        return suffix;
+      }
+    }
+
+    return 'unknown';
+  }
+
+  function buildExpressAnalyticsPayload(name, detail) {
+    const suffix = deriveExpressEventSuffix(name, detail);
+    const status = typeof detail?.status === 'string' ? detail.status : suffix;
+    const mode = detail?.ctx?.mode || 'express';
+
+    return {
+      suffix,
+      status,
+      mode,
+      hasToken: Boolean(detail?.token),
+      hasSession: Boolean(detail?.sessionId),
+      paymentReference: getClientPaymentReference(),
+      timestamp: Date.now(),
+    };
+  }
+
+  function forwardToTracks(payload) {
+    if (!analyticsOptions.tracksEnabled) {
+      return;
+    }
+
+    const eventName = `monek_express_${payload.suffix}`;
+    const tracks = windowObject.wcTracks || windowObject.wc?.tracks || windowObject.WooCommerceTracks;
+    const recordEvent = typeof tracks?.recordEvent === 'function'
+      ? tracks.recordEvent.bind(tracks)
+      : typeof windowObject.wcTracksRecordEvent === 'function'
+        ? windowObject.wcTracksRecordEvent
+        : null;
+
+    if (typeof recordEvent !== 'function') {
+      if (configuration.debug && windowObject.console?.log) {
+        windowObject.console.log('[monek] tracks unavailable, skipping event', eventName);
+      }
+      return;
+    }
+
+    const eventPayload = {
+      status: payload.status,
+      mode: payload.mode,
+      has_token: payload.hasToken ? 1 : 0,
+      has_session: payload.hasSession ? 1 : 0,
+      payment_reference: payload.paymentReference,
+      source: 'monek_checkout',
+    };
+
+    try {
+      recordEvent(eventName, eventPayload);
+    } catch (error) {
+      if (configuration.debug && windowObject.console?.warn) {
+        windowObject.console.warn('[monek] tracks dispatch failed', eventName, error);
+      }
+    }
+  }
+
+  function forwardToDataLayer(payload) {
+    if (!analyticsOptions.dataLayerEnabled) {
+      return;
+    }
+
+    const eventName = `${analyticsOptions.dataLayerEventBase}_${payload.suffix}`;
+    const dataLayer = Array.isArray(windowObject.dataLayer) ? windowObject.dataLayer : (windowObject.dataLayer = []);
+
+    const message = {
+      event: eventName,
+      monekExpress: {
+        status: payload.status,
+        mode: payload.mode,
+        paymentReference: payload.paymentReference,
+        hasToken: payload.hasToken,
+        hasSession: payload.hasSession,
+      },
+      monekTimestamp: payload.timestamp,
+    };
+
+    try {
+      dataLayer.push(message);
+    } catch (error) {
+      if (configuration.debug && windowObject.console?.warn) {
+        windowObject.console.warn('[monek] dataLayer push failed', eventName, error);
+      }
+    }
+  }
+
+  function forwardToGtag(payload) {
+    if (!analyticsOptions.gtagEnabled || typeof windowObject.gtag !== 'function') {
+      return;
+    }
+
+    const eventName = `${analyticsOptions.gtagEventBase}_${payload.suffix}`;
+    const parameters = {
+      event_category: analyticsOptions.gtagCategory,
+      event_label: `monek_${payload.mode}`,
+      value: payload.status === 'success' ? 1 : 0,
+      monek_status: payload.status,
+      monek_mode: payload.mode,
+      monek_reference: payload.paymentReference,
+    };
+
+    try {
+      windowObject.gtag('event', eventName, parameters);
+    } catch (error) {
+      if (configuration.debug && windowObject.console?.warn) {
+        windowObject.console.warn('[monek] gtag dispatch failed', eventName, error);
+      }
+    }
+  }
+
+  function forwardAnalyticsEvent(name, detail) {
+    if (!analyticsOptions.tracksEnabled && !analyticsOptions.dataLayerEnabled && !analyticsOptions.gtagEnabled) {
+      return;
+    }
+
+    const payload = buildExpressAnalyticsPayload(name, detail);
+
+    if (configuration.debug && windowObject.console?.log) {
+      windowObject.console.log('[monek] analytics payload', name, payload);
+    }
+
+    forwardToTracks(payload);
+    forwardToDataLayer(payload);
+    forwardToGtag(payload);
   }
 
   function toIso3166Numeric(code) {

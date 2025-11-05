@@ -103,6 +103,9 @@ final class MonekBlocksIntegration extends AbstractPaymentMethodType
         $stylingConfiguration = $gateway && method_exists($gateway, 'getStylingConfiguration')
             ? $gateway->getStylingConfiguration()
             : $this->get_default_styling_configuration();
+        $analyticsConfiguration = $gateway && method_exists($gateway, 'getAnalyticsConfiguration')
+            ? $gateway->getAnalyticsConfiguration()
+            : $this->get_default_analytics_configuration();
 
         return [
             'title' => $gateway ? $gateway->get_title() : __('Monek Checkout', 'monek-checkout'),
@@ -127,6 +130,7 @@ final class MonekBlocksIntegration extends AbstractPaymentMethodType
             'theme' => $stylingConfiguration['theme'],
             'styling' => $stylingConfiguration['styling'] ?? null,
             'customTheme' => $stylingConfiguration['customTheme'] ?? null,
+            'analytics' => $analyticsConfiguration,
         ];
     }
 
@@ -135,6 +139,15 @@ final class MonekBlocksIntegration extends AbstractPaymentMethodType
         return [
             'themeMode' => 'light',
             'theme' => 'light',
+        ];
+    }
+
+    private function get_default_analytics_configuration(): array
+    {
+        return [
+            'tracks' => ['enabled' => false],
+            'dataLayer' => ['enabled' => false, 'event' => 'monek_express'],
+            'gtag' => ['enabled' => false, 'event' => 'monek_express', 'category' => 'checkout'],
         ];
     }
 }
