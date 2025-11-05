@@ -18,6 +18,7 @@ use Monek\Checkout\Autoloader;
 use Monek\Checkout\Infrastructure\WordPress\Admin\AdminStyleEnqueuer;
 use Monek\Checkout\Infrastructure\WordPress\Admin\PluginActionLinkProvider;
 use Monek\Checkout\Infrastructure\WordPress\Admin\SettingsNoticePresenter;
+use Monek\Checkout\Infrastructure\WordPress\Admin\ToolsPage;
 use Monek\Checkout\Infrastructure\WordPress\Blocks\BlockPaymentRegistrar;
 use Monek\Checkout\Infrastructure\WordPress\Compatibility\BlockCompatibilityDeclarer;
 use Monek\Checkout\Infrastructure\WordPress\Gateway\GatewayBootstrapper;
@@ -60,6 +61,7 @@ if (! function_exists('monek_bootstrap_plugin')) {
             new GatewayBootstrapper(),
             new PluginActionLinkProvider(),
             new SettingsNoticePresenter(),
+            new ToolsPage(),
             new OrderStatusRegistrar(),
             new AdminStyleEnqueuer(),
             new WebhookRouteRegistrar(),
