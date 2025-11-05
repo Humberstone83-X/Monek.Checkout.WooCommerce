@@ -1,10 +1,12 @@
 *** Monek Checkout Changelog ***
 
-2025-10-23 version 4.0.0
+2025-11-05 version 4.0.0
 * Breaking - Requires WooCommerce Checkout Blocks and retires the legacy shortcode checkout.
 * Added - Embedded checkout experience powered by the Monek Checkout SDK with server-side completion and the Payment Confirmed order status.
 * Added - Configuration fields for Odin publishable and secret keys plus Apple Pay domain support.
 * Added - Optional SVIX webhook endpoint at /wp-json/monek/v1/webhook, including signing secret verification for trusted notifications.
+* Added - Optional analytics forwarding for express checkout events (WooCommerce Tracks, dataLayer, gtag.js).
+* Added - Diagnostics page to help monitor webhook activity and configuration status.
 
 2025-09-12 version 3.3.6
 * Added - Support for Checkout Blocks

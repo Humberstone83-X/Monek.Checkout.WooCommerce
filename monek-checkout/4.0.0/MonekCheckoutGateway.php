@@ -14,6 +14,7 @@ use Monek\Checkout\Application\Checkout\StoreContext;
 use Monek\Checkout\Infrastructure\Logging\Logger;
 use WC_Order;
 use function sanitize_hex_color;
+use function wp_strip_all_tags;
 
 if (! defined('ABSPATH')) {
     exit;
@@ -32,6 +33,12 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
     private StandardCheckoutHandler $standardCheckoutHandler;
     private CurrencyFormatter $currencyFormatter;
     private StoreContext $storeContext;
+    private bool $analyticsTracksEnabled;
+    private bool $analyticsDataLayerEnabled;
+    private string $analyticsDataLayerEvent;
+    private bool $analyticsGtagEnabled;
+    private string $analyticsGtagEvent;
+    private string $analyticsGtagCategory;
 
     public function __construct()
     {
@@ -51,6 +58,12 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
         $this->show_express = $this->get_option('show_express', 'yes');
         $this->debug_mode = $this->get_option('debug', 'no');
         $this->svix_signing_secret = $this->get_option('svix_signing_secret');
+        $this->analyticsTracksEnabled = ($this->get_option('analytics_tracks', 'no') === 'yes');
+        $this->analyticsDataLayerEnabled = ($this->get_option('analytics_datalayer', 'no') === 'yes');
+        $this->analyticsDataLayerEvent = $this->normaliseAnalyticsEventName($this->get_option('analytics_datalayer_event', 'monek_express')) ?: 'monek_express';
+        $this->analyticsGtagEnabled = ($this->get_option('analytics_gtag', 'no') === 'yes');
+        $this->analyticsGtagEvent = $this->normaliseAnalyticsEventName($this->get_option('analytics_gtag_event', 'monek_express')) ?: 'monek_express';
+        $this->analyticsGtagCategory = $this->normaliseAnalyticsEventName($this->get_option('analytics_gtag_category', 'checkout')) ?: 'checkout';
 
         $this->logger = new Logger();
         $this->currencyFormatter = new CurrencyFormatter();
@@ -125,6 +138,53 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
                 'type' => 'checkbox',
                 'label' => __('Enable verbose logging in the browser console.', 'monek-checkout'),
                 'default' => 'no',
+            ],
+            'analytics_heading' => [
+                'title' => __('Analytics & tracking', 'monek-checkout'),
+                'type' => 'title',
+                'description' => __('Optionally forward express checkout lifecycle events to WooCommerce Tracks or external analytics tools.', 'monek-checkout'),
+            ],
+            'analytics_tracks' => [
+                'title' => __('WooCommerce Tracks', 'monek-checkout'),
+                'type' => 'checkbox',
+                'label' => __('Record express checkout events in WooCommerce Tracks.', 'monek-checkout'),
+                'default' => 'no',
+            ],
+            'analytics_datalayer' => [
+                'title' => __('Push to dataLayer', 'monek-checkout'),
+                'type' => 'checkbox',
+                'label' => __('Push express checkout events to window.dataLayer for Google Tag Manager or similar tools.', 'monek-checkout'),
+                'default' => 'no',
+            ],
+            'analytics_datalayer_event' => [
+                'title' => __('dataLayer event key', 'monek-checkout'),
+                'type' => 'text',
+                'default' => 'monek_express',
+                'description' => __('Base event name to use when pushing to the dataLayer (status suffix is appended automatically).', 'monek-checkout'),
+                'desc_tip' => true,
+                'sanitize_callback' => 'sanitize_text_field',
+            ],
+            'analytics_gtag' => [
+                'title' => __('Google gtag.js', 'monek-checkout'),
+                'type' => 'checkbox',
+                'label' => __('Send express checkout events to the global gtag() function.', 'monek-checkout'),
+                'default' => 'no',
+            ],
+            'analytics_gtag_event' => [
+                'title' => __('gtag event key', 'monek-checkout'),
+                'type' => 'text',
+                'default' => 'monek_express',
+                'description' => __('Base event name that will be suffixed with the event status when calling gtag().', 'monek-checkout'),
+                'desc_tip' => true,
+                'sanitize_callback' => 'sanitize_text_field',
+            ],
+            'analytics_gtag_category' => [
+                'title' => __('gtag event category', 'monek-checkout'),
+                'type' => 'text',
+                'default' => 'checkout',
+                'description' => __('Category value sent alongside gtag events.', 'monek-checkout'),
+                'desc_tip' => true,
+                'sanitize_callback' => 'sanitize_text_field',
             ],
             'theme_mode' => [
                 'title' => __('Checkout theme', 'monek-checkout'),
@@ -383,7 +443,42 @@ class MonekCheckoutGateway extends \WC_Payment_Gateway
             $settings['customTheme'] = $stylingConfiguration['customTheme'];
         }
 
+        $settings['analytics'] = $this->getAnalyticsConfiguration();
+
         wp_localize_script($scriptHandle, 'monekCheckoutConfig', $settings);
+    }
+
+    public function getAnalyticsConfiguration(): array
+    {
+        return [
+            'tracks' => [
+                'enabled' => $this->analyticsTracksEnabled,
+            ],
+            'dataLayer' => [
+                'enabled' => $this->analyticsDataLayerEnabled,
+                'event' => $this->analyticsDataLayerEvent,
+            ],
+            'gtag' => [
+                'enabled' => $this->analyticsGtagEnabled,
+                'event' => $this->analyticsGtagEvent,
+                'category' => $this->analyticsGtagCategory,
+            ],
+        ];
+    }
+
+    private function normaliseAnalyticsEventName($value): string
+    {
+        if (! is_string($value)) {
+            return '';
+        }
+
+        $trimmed = trim(wp_strip_all_tags($value));
+
+        if ($trimmed === '') {
+            return '';
+        }
+
+        return preg_replace('/[^a-zA-Z0-9_\-]/', '_', $trimmed) ?: '';
     }
 
     private function registerStyles(): void
