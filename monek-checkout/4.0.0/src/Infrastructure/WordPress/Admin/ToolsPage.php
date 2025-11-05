@@ -2,14 +2,11 @@
 
 namespace Monek\Checkout\Infrastructure\WordPress\Admin;
 
-use SplFileObject;
-use Throwable;
 use WP_Error;
 
 class ToolsPage
 {
     private const PAGE_SLUG = 'monek-tools';
-    private const LOG_LINE_LIMIT = 20;
 
     public function register(): void
     {
@@ -32,9 +29,12 @@ class ToolsPage
             wp_die(__('You do not have permission to access this page.', 'monek-checkout'));
         }
 
-        $webhookStatus = $this->evaluateWebhook();
+        $webhookStatus    = $this->evaluateWebhook();
         $credentialStatus = $this->evaluateCredentials();
-        $logs = $this->collectLogs();
+
+        // Build “today” links to Woo’s log viewer (site timezone)
+        $today   = function_exists('current_time') ? current_time('Y-m-d') : gmdate('Y-m-d');
+        $links   = $this->buildTodayLogLinks($today);
 
         $webhookEndpoint = function_exists('rest_url') ? rest_url('monek/v1/webhook') : '';
         ?>
@@ -57,29 +57,39 @@ class ToolsPage
                 <p><code><?php echo esc_html($credentialStatus['details']); ?></code></p>
             <?php endif; ?>
 
-            <h2><?php esc_html_e('Recent logs', 'monek-checkout'); ?></h2>
-            <?php if ($logs === []) : ?>
-                <p><?php esc_html_e('No log files were found for the Monek gateway yet.', 'monek-checkout'); ?></p>
-            <?php else : ?>
-                <?php foreach ($logs as $log ) : ?>
-                    <h3><?php echo esc_html($log['label']); ?></h3>
-                    <?php if ($log['path'] !== null) : ?>
-                        <p><code><?php echo esc_html($log['path']); ?></code></p>
-                    <?php endif; ?>
-                    <?php if ($log['entries'] === []) : ?>
-                        <p><?php esc_html_e('The log file exists but no entries could be read.', 'monek-checkout'); ?></p>
-                    <?php else : ?>
-                        <pre><?php echo esc_html(implode("\n", $log['entries'])); ?></pre>
-                    <?php endif; ?>
-                <?php endforeach; ?>
-            <?php endif; ?>
+            <h2><?php esc_html_e('Recent logs (today’s quick links)', 'monek-checkout'); ?></h2>
+            <p class="description">
+                <?php
+                printf(
+                    /* translators: %s: date like 2025-11-05 */
+                    esc_html__('These open the WooCommerce log viewer for %s. If a file does not exist yet, the Woo page will show "No logs found" until something is written.', 'monek-checkout'),
+                    esc_html($today)
+                );
+                ?>
+            </p>
+            <ul>
+                <li>
+                    <a class="button" href="<?php echo esc_url($links['monek']); ?>">
+                        <?php echo esc_html(sprintf(__('Open %s', 'monek-checkout'), "monek-$today")); ?>
+                    </a>
+                </li>
+                <li>
+                    <a class="button" href="<?php echo esc_url($links['monek-webhook']); ?>">
+                        <?php echo esc_html(sprintf(__('Open %s', 'monek-checkout'), "monek-webhook-$today")); ?>
+                    </a>
+                </li>
+            </ul>
+
+            <p class="description" style="margin-top:8px;">
+                <?php esc_html_e('Tip: If the Woo page opens but shows no entries, it just means nothing has been logged yet for today with that source.', 'monek-checkout'); ?>
+            </p>
         </div>
         <?php
     }
 
     private function renderNotice(array $result): void
     {
-        $status = $result['status'] ?? 'warning';
+        $status  = $result['status']  ?? 'warning';
         $message = $result['message'] ?? '';
 
         $class = 'notice';
@@ -96,6 +106,36 @@ class ToolsPage
         ?>
         <div class="<?php echo esc_attr($class); ?>"><p><?php echo esc_html($message); ?></p></div>
         <?php
+    }
+
+    /**
+     * Build a WooCommerce Status → Logs URL pointing at a specific file key (without ".log").
+     * We include both `file_id` and `file` params for broad WC version compatibility.
+     *
+     * @param string $date like "2025-11-05"
+     * @return array{monek:string,monek-webhook:string}
+     */
+    private function buildTodayLogLinks(string $date): array
+    {
+        $base = function_exists('admin_url') ? admin_url('admin.php') : '/wp-admin/admin.php';
+
+        $make = static function (string $key) use ($base): string {
+            // Example key: monek-webhook-2025-11-05 (Woo adds -<hash>-log internally)
+            $args = [
+                'page' => 'wc-status',
+                'tab'  => 'logs',
+                // WC 7.x / 8.x commonly accept either of these:
+                'view'    => 'single_file',
+                'file_id' => $key,
+                'file'    => $key,
+            ];
+            return add_query_arg($args, $base);
+        };
+
+        return [
+            'monek'         => $make("monek-$date"),
+            'monek-webhook' => $make("monek-webhook-$date"),
+        ];
     }
 
     /**
@@ -117,24 +157,24 @@ class ToolsPage
             [
                 'timeout' => 10,
                 'headers' => ['Content-Type' => 'application/json'],
-                'body' => wp_json_encode(['diagnostics' => true]),
+                'body'    => wp_json_encode(['diagnostics' => true]),
             ]
         );
 
         if ($response instanceof WP_Error) {
             return [
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => __('Failed to contact the webhook endpoint.', 'monek-checkout'),
                 'details' => $this->truncateDetails($response->get_error_message()),
             ];
         }
 
         $statusCode = (int) wp_remote_retrieve_response_code($response);
-        $body = (string) wp_remote_retrieve_body($response);
+        $body       = (string) wp_remote_retrieve_body($response);
 
         if ($statusCode === 401) {
             return [
-                'status' => 'success',
+                'status'  => 'success',
                 'message' => __('The webhook endpoint responded as expected (signature required).', 'monek-checkout'),
                 'details' => sprintf(__('Response: HTTP %d', 'monek-checkout'), $statusCode),
             ];
@@ -142,14 +182,14 @@ class ToolsPage
 
         if ($statusCode >= 200 && $statusCode < 300) {
             return [
-                'status' => 'success',
+                'status'  => 'success',
                 'message' => __('The webhook endpoint is reachable.', 'monek-checkout'),
                 'details' => sprintf(__('Response: HTTP %1$d %2$s', 'monek-checkout'), $statusCode, $this->truncateDetails($body)),
             ];
         }
 
         return [
-            'status' => 'warning',
+            'status'  => 'warning',
             'message' => __('The webhook endpoint responded with an unexpected status code.', 'monek-checkout'),
             'details' => sprintf(__('Response: HTTP %1$d %2$s', 'monek-checkout'), $statusCode, $this->truncateDetails($body)),
         ];
@@ -162,24 +202,24 @@ class ToolsPage
     {
         if (! function_exists('get_option')) {
             return [
-                'status' => 'warning',
+                'status'  => 'warning',
                 'message' => __('Unable to read gateway settings from the database.', 'monek-checkout'),
                 'details' => '',
             ];
         }
 
-        $settings = get_option('woocommerce_monek-checkout_settings', []);
+        $settings       = get_option('woocommerce_monek-checkout_settings', []);
         $publishableKey = '';
-        $secretKey = '';
+        $secretKey      = '';
 
         if (is_array($settings)) {
             $publishableKey = isset($settings['publishable_key']) ? trim((string) $settings['publishable_key']) : '';
-            $secretKey = isset($settings['secret_key']) ? trim((string) $settings['secret_key']) : '';
+            $secretKey      = isset($settings['secret_key']) ? trim((string) $settings['secret_key']) : '';
         }
 
         if ($publishableKey === '' || $secretKey === '') {
             return [
-                'status' => 'warning',
+                'status'  => 'warning',
                 'message' => __('Add your publishable and secret keys on the payment settings screen to run the validation test.', 'monek-checkout'),
                 'details' => '',
             ];
@@ -187,7 +227,7 @@ class ToolsPage
 
         if (! function_exists('wp_remote_post')) {
             return [
-                'status' => 'warning',
+                'status'  => 'warning',
                 'message' => __('WordPress HTTP functions are unavailable.', 'monek-checkout'),
                 'details' => '',
             ];
@@ -199,28 +239,28 @@ class ToolsPage
                 'timeout' => 10,
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Api-Key' => $publishableKey,
+                    'X-Api-Key'    => $publishableKey,
                     'X-Secret-Key' => $secretKey,
                 ],
-                'body' => wp_json_encode(['diagnostics' => true]),
+                'body'    => wp_json_encode(['diagnostics' => true]),
             ]
         );
 
         if ($response instanceof WP_Error) {
             return [
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => __('Failed to reach the Monek API.', 'monek-checkout'),
                 'details' => $this->truncateDetails($response->get_error_message()),
             ];
         }
 
         $statusCode = (int) wp_remote_retrieve_response_code($response);
-        $body = (string) wp_remote_retrieve_body($response);
-        $details = sprintf(__('Response: HTTP %1$d %2$s', 'monek-checkout'), $statusCode, $this->truncateDetails($body));
+        $body       = (string) wp_remote_retrieve_body($response);
+        $details    = sprintf(__('Response: HTTP %1$d %2$s', 'monek-checkout'), $statusCode, $this->truncateDetails($body));
 
         if ($statusCode === 401 || $statusCode === 403) {
             return [
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => __('The Monek API rejected the provided credentials.', 'monek-checkout'),
                 'details' => $details,
             ];
@@ -228,112 +268,30 @@ class ToolsPage
 
         if ($statusCode >= 200 && $statusCode < 500) {
             return [
-                'status' => 'success',
+                'status'  => 'success',
                 'message' => __('The Monek API is reachable with the configured credentials.', 'monek-checkout'),
                 'details' => $details,
             ];
         }
 
         return [
-            'status' => 'warning',
+            'status'  => 'warning',
             'message' => __('Received an unexpected response from the Monek API.', 'monek-checkout'),
             'details' => $details,
         ];
     }
 
-    /**
-     * @return array<int,array{label:string,path:?string,entries:array<int,string>}> 
-     */
-    private function collectLogs(): array
-    {
-        if (! function_exists('wc_get_log_dir')) {
-            return [];
-        }
-
-        $logs = [];
-        $sources = [
-            'monek' => __('Checkout activity', 'monek-checkout'),
-            'monek-webhook' => __('Webhook activity', 'monek-checkout'),
-        ];
-
-        foreach ($sources as $handle => $label) {
-            $path = $this->resolveLatestLogFile($handle);
-            $logs[] = [
-                'label' => $label,
-                'path' => $path,
-                'entries' => $path ? $this->readLogTail($path, self::LOG_LINE_LIMIT) : [],
-            ];
-        }
-
-        return $logs;
-    }
-
-    private function resolveLatestLogFile(string $handle): ?string
-    {
-        $directory = wc_get_log_dir();
-        $safeHandle = $this->sanitiseHandle($handle);
-        $pattern = trailingslashit($directory) . $safeHandle . '-*.log';
-        $files = glob($pattern);
-
-        if (! is_array($files) || $files === []) {
-            return null;
-        }
-
-        usort($files, static function (string $a, string $b): int {
-            return filemtime($b) <=> filemtime($a);
-        });
-
-        foreach ($files as $file) {
-            if (is_readable($file)) {
-                return $file;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @return array<int,string>
-     */
-    private function readLogTail(string $path, int $limit): array
-    {
-        try {
-            $file = new SplFileObject($path, 'r');
-        } catch (Throwable $exception) {
-            return [];
-        }
-
-        $file->seek(PHP_INT_MAX);
-        $lastLine = $file->key();
-
-        $lines = [];
-        for ($lineNumber = $lastLine; $lineNumber >= 0 && count($lines) < $limit; $lineNumber--) {
-            $file->seek($lineNumber);
-            $line = rtrim((string) $file->current(), "\r\n");
-            array_unshift($lines, $line);
-        }
-
-        return $lines;
-    }
-
-    private function sanitiseHandle(string $handle): string
-    {
-        $sanitised = preg_replace('/[^a-z0-9\-]/i', '', $handle);
-
-        return $sanitised !== null && $sanitised !== '' ? strtolower($sanitised) : 'monek';
-    }
-
     private function truncateDetails(string $value): string
     {
-        $trimmed = trim(wp_strip_all_tags($value));
+        $trimmed = trim(function_exists('wp_strip_all_tags') ? wp_strip_all_tags($value) : $value);
         if ($trimmed === '') {
             return '';
         }
 
-        if (mb_strlen($trimmed) > 400) {
-            return mb_substr($trimmed, 0, 400) . '…';
+        if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+            return mb_strlen($trimmed) > 400 ? mb_substr($trimmed, 0, 400) . '…' : $trimmed;
         }
 
-        return $trimmed;
+        return strlen($trimmed) > 400 ? substr($trimmed, 0, 400) . '…' : $trimmed;
     }
 }
